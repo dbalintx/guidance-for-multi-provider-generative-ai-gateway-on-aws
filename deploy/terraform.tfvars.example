@@ -1,0 +1,46 @@
+# Copy to deploy/terraform.tfvars and edit. deploy/deploy.sh passes this one
+# file to both root modules (terraform/foundation and terraform/app); every
+# variable is documented in the owning module's variables.tf. A variable only
+# one root declares makes the other print a harmless "undeclared variable"
+# warning.
+#
+# Secrets NEVER go in this file: secret-valued inputs take Secrets Manager
+# ARNs, and no script reads or prints a secret value.
+
+# --- Both root modules ---
+deployment_name = "llmgw" # prefix for every resource; unique per deployment in the account
+tags            = {}      # your own tags, merged into the defaults
+
+# --- foundation: network (bring your own VPC; leave unset to create one) ---
+# vpc_id             = "vpc-0123456789abcdef0"
+# private_subnet_ids = ["subnet-...", "subnet-..."] # 2+ private subnets in different AZs
+
+# --- foundation: extra data-store clients (any non-ECS consumer, e.g. the EKS example) ---
+# extra_data_ingress_security_group_ids = []
+# extra_data_ingress_cidrs              = []
+
+# --- foundation: protection and encryption ---
+# deletion_protection = true # set false + deploy before undeploying
+# kms_key_arn         = null # optional customer KMS key
+
+# --- app: exposure ---
+# public_mode = false # true: internet-facing ALB with WAF
+
+# --- app: TLS and DNS ---
+# certificate_arn     = "arn:aws:acm:..." # required unless allow_insecure_http
+# allow_insecure_http = false             # private proof of concept only; rejected in public mode
+# hosted_zone_id      = null              # set both or neither
+# record_name         = null              # e.g. "llm.example.com"
+
+# --- app: identity provider (ALB sign-in in front of the UI, both modes; needs HTTPS) ---
+# identity_provider = {
+#   issuer                 = "https://login.microsoftonline.com/<tenant>/v2.0"
+#   authorization_endpoint = "https://login.microsoftonline.com/<tenant>/oauth2/v2.0/authorize"
+#   token_endpoint         = "https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token"
+#   user_info_endpoint     = "https://graph.microsoft.com/oidc/userinfo"
+#   client_id              = "00000000-0000-0000-0000-000000000000"
+#   client_secret_arn      = "arn:aws:secretsmanager:..." # the ARN, never the secret
+# }
+
+# --- app: licence (null = reduced mode, trials only) ---
+# litellm_license_secret_arn = null
