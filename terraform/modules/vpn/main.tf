@@ -12,6 +12,7 @@ locals {
 }
 
 resource "aws_cloudwatch_log_group" "vpn" {
+  #checkov:skip=CKV_AWS_338:Demo-only endpoint; retention is configurable via log_retention_days (default 90).
   name              = "/${var.deployment_name}/vpn/connections"
   retention_in_days = var.log_retention_days
   kms_key_id        = var.kms_key_arn
@@ -112,6 +113,7 @@ resource "aws_ec2_client_vpn_authorization_rule" "vpc" {
 }
 
 resource "aws_ssm_parameter" "endpoint_id" {
+  #checkov:skip=CKV2_AWS_34:Endpoint ID is a non-secret identifier read by deploy/setup-vpn.sh; String is intentional.
   name        = "/${var.deployment_name}/vpn/endpoint-id"
   description = "Client VPN endpoint ID for ${var.deployment_name} (read by deploy/setup-vpn.sh profile)"
   type        = "String"
