@@ -169,3 +169,173 @@ variable "litellm_license_secret_arn" {
   type        = string
   default     = null
 }
+
+# --- App-only inputs (never wired from foundation) ---
+
+variable "public_subnet_ids" {
+  description = "Public subnets for the internet-facing ALB. Required (2+ subnets, different AZs) in public mode; ignored in private mode."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = !var.public_mode || length(var.public_subnet_ids) >= 2
+    error_message = "public_mode needs at least two public_subnet_ids in different Availability Zones for the internet-facing ALB."
+  }
+}
+
+variable "client_cidrs" {
+  description = "Private mode: CIDR ranges allowed to reach the ALB (VPN, Direct Connect, Transit Gateway). Empty means the VPC CIDR only — never all of RFC 1918."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for c in var.client_cidrs : can(cidrhost(c, 0))])
+    error_message = "Every client_cidrs entry must be a valid IPv4 CIDR, for example 10.20.0.0/16."
+  }
+}
+
+variable "client_security_group_ids" {
+  description = "Security groups allowed to reach the ALB (for example the demo Client VPN)."
+  type        = list(string)
+  default     = []
+}
+
+variable "deletion_protection" {
+  description = "Protect the ALB from deletion and keep the log buckets on destroy. Set false and apply before undeploying."
+  type        = bool
+  default     = true
+}
+
+variable "architecture" {
+  description = "CPU architecture of the Fargate tasks: x86 or arm. The official LiteLLM image is multi-arch; Graviton is cheaper."
+  type        = string
+  default     = "arm"
+
+  validation {
+    condition     = contains(["x86", "arm"], var.architecture)
+    error_message = "architecture must be x86 or arm."
+  }
+}
+
+variable "vcpus" {
+  description = "vCPUs per gateway task (memory is 2 GiB per vCPU)."
+  type        = number
+  default     = 2
+}
+
+variable "desired_capacity" {
+  description = "Task count at creation. After that, auto scaling owns the count: redeploys never reset it."
+  type        = number
+  default     = 2
+}
+
+variable "min_capacity" {
+  description = "Auto scaling minimum task count."
+  type        = number
+  default     = 2
+}
+
+variable "max_capacity" {
+  description = "Auto scaling maximum task count."
+  type        = number
+  default     = 4
+}
+
+variable "cpu_target_utilization_percent" {
+  description = "Target-tracking CPU utilization for service auto scaling."
+  type        = number
+  default     = 75
+}
+
+variable "memory_target_utilization_percent" {
+  description = "Target-tracking memory utilization for service auto scaling."
+  type        = number
+  default     = 70
+}
+
+variable "log_level" {
+  description = "LITELLM_LOG level. DEBUG writes prompts and provider payloads to the logs (verified on 1.82.3 and 1.106.0): temporary troubleshooting only — the plan warns while it is on."
+  type        = string
+  default     = "INFO"
+
+  validation {
+    condition     = contains(["ERROR", "WARNING", "INFO", "DEBUG"], var.log_level)
+    error_message = "log_level must be one of ERROR, WARNING, INFO, DEBUG."
+  }
+}
+
+variable "log_retention_days" {
+  description = "Retention of the LiteLLM CloudWatch logs and of the S3 access/request logs."
+  type        = number
+  default     = 90
+}
+
+variable "waf_rate_limit_per_5_min" {
+  description = "Public mode WAF rate-based rule: requests per source IP per 5 minutes before blocking. LiteLLM's own per-key and per-team limits still apply."
+  type        = number
+  default     = 2000
+}
+
+variable "include_default_models" {
+  description = "Load the repository's legacy default model lists (config/default-config-base.yaml + the region file). Off by default: new deployments should add models in the LiteLLM UI (2.17)."
+  type        = bool
+  default     = false
+}
+
+variable "config_override_file" {
+  description = "Optional YAML file merged over the rendered LiteLLM config: model_list entries are appended; general_settings, litellm_settings and router_settings keys override the base."
+  type        = string
+  default     = null
+}
+
+variable "bedrock_model_allowlist" {
+  description = "Optional Bedrock model IDs the task role may invoke. Empty = any model and inference profile in the allowed regions (model access is still governed in Bedrock and in LiteLLM teams)."
+  type        = list(string)
+  default     = []
+}
+
+variable "bedrock_region_allowlist" {
+  description = "Optional regions the task role may invoke Bedrock in. Empty = any region, so cross-region inference profiles and new regions keep working."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for r in var.bedrock_region_allowlist : can(regex("^[a-z]{2}(-[a-z]+)+-\\d$", r))])
+    error_message = "Every bedrock_region_allowlist entry must be a region name such as eu-west-1."
+  }
+}
+
+variable "cross_account_role_arns" {
+  description = "Roles in other accounts LiteLLM may assume for Bedrock models or guardrails, listed explicitly. A role/* wildcard is rejected."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for a in var.cross_account_role_arns : can(regex("^arn:aws[a-z-]*:iam::\\d{12}:role/", a)) && !strcontains(a, "*")])
+    error_message = "cross_account_role_arns must be explicit role ARNs (arn:aws:iam::<account>:role/<name>); wildcards are rejected."
+  }
+}
+
+variable "provider_secret_arns" {
+  description = "Environment variable name => Secrets Manager ARN (optionally with the :json-key:: suffix) for non-Bedrock provider API keys. Values never pass through variables or state."
+  type        = map(string)
+  default     = {}
+}
+
+variable "extra_environment" {
+  description = "Additional non-secret environment variables for LiteLLM (for example SSO client IDs, PROXY_BASE_URL, HTTPS_PROXY)."
+  type        = map(string)
+  default     = {}
+}
+
+variable "ui_password_secret_arn" {
+  description = "Optional Secrets Manager ARN of a separate UI admin password. Unset, LiteLLM falls back to the master key as the UI password (2.12 recommends a separate one). Auto-wired if the foundation exports an output of this name."
+  type        = string
+  default     = null
+}
+
+variable "run_migrations_on_apply" {
+  description = "Run the LiteLLM schema migration as a one-off ECS task, and gate the service rollout on its exit code (needs the AWS CLI where Terraform runs). Disable only when running the migration out of band."
+  type        = bool
+  default     = true
+}
