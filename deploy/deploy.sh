@@ -115,9 +115,13 @@ FOUNDATION_OUTPUTS="${GEN_DIR}/foundation-outputs.tfvars.json"
 terraform -chdir="$FOUNDATION_DIR" output -json \
   | jq 'with_entries(.value |= .value)' > "$FOUNDATION_OUTPUTS"
 
+# The app apply also runs the database migration: terraform_data.migrate calls
+# deploy/run-migration.sh (a one-off ECS task) and the service only rolls after
+# it exits 0 — LiteLLM reports healthy on an unmigrated database, so the rollout
+# must be gated on the migration's result, not on health checks.
 init "$APP_DIR" "app.tfstate"
 plan_and_apply "app" "$APP_DIR" "$FOUNDATION_OUTPUTS"
 
 echo ""
-echo "Done. Gateway URL (null until the ALB lands):"
-terraform -chdir="$APP_DIR" output service_url
+echo "Done. Gateway URL:"
+terraform -chdir="$APP_DIR" output -raw service_url
