@@ -99,6 +99,47 @@ variable "data_ingress_security_group_id" {
   default     = null
 }
 
+variable "public_subnet_ids" {
+  description = "Foundation output: public subnets for the internet-facing ALB. Required (2+ subnets, different AZs) in public mode; ignored in private mode."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = !var.public_mode || length(var.public_subnet_ids) >= 2
+    error_message = "public_mode needs at least two public_subnet_ids in different Availability Zones for the internet-facing ALB."
+  }
+}
+
+variable "ui_password_secret_arn" {
+  description = "Foundation output: Secrets Manager ARN of the LiteLLM admin UI password, kept separate from the master key (2.12)."
+  type        = string
+  default     = null
+}
+
+variable "rds_instance_identifier" {
+  description = "Foundation output: RDS instance identifier (alarm and dashboard dimension)."
+  type        = string
+  default     = null
+}
+
+variable "redis_replication_group_id" {
+  description = "Foundation output: ElastiCache replication group ID (alarm and dashboard dimension)."
+  type        = string
+  default     = null
+}
+
+variable "redis_num_cache_clusters" {
+  description = "Foundation output: number of Redis nodes, for the per-node alarms."
+  type        = number
+  default     = 2
+}
+
+variable "vpn_security_group_id" {
+  description = "Foundation output: the demo Client VPN's security group, admitted to the ALB like client_security_group_ids. Null (the default) when the foundation has no VPN."
+  type        = string
+  default     = null
+}
+
 # --- Modes (Milestone 1 contract) ---
 
 variable "public_mode" {
@@ -172,17 +213,6 @@ variable "litellm_license_secret_arn" {
 
 # --- App-only inputs (never wired from foundation) ---
 
-variable "public_subnet_ids" {
-  description = "Public subnets for the internet-facing ALB. Required (2+ subnets, different AZs) in public mode; ignored in private mode."
-  type        = list(string)
-  default     = []
-
-  validation {
-    condition     = !var.public_mode || length(var.public_subnet_ids) >= 2
-    error_message = "public_mode needs at least two public_subnet_ids in different Availability Zones for the internet-facing ALB."
-  }
-}
-
 variable "client_cidrs" {
   description = "Private mode: CIDR ranges allowed to reach the ALB (VPN, Direct Connect, Transit Gateway). Empty means the VPC CIDR only — never all of RFC 1918."
   type        = list(string)
@@ -195,7 +225,7 @@ variable "client_cidrs" {
 }
 
 variable "client_security_group_ids" {
-  description = "Security groups allowed to reach the ALB (for example the demo Client VPN)."
+  description = "Extra security groups allowed to reach the ALB. The foundation's demo Client VPN is admitted automatically via vpn_security_group_id."
   type        = list(string)
   default     = []
 }
@@ -328,14 +358,14 @@ variable "extra_environment" {
   default     = {}
 }
 
-variable "ui_password_secret_arn" {
-  description = "Optional Secrets Manager ARN of a separate UI admin password. Unset, LiteLLM falls back to the master key as the UI password (2.12 recommends a separate one). Auto-wired if the foundation exports an output of this name."
-  type        = string
-  default     = null
-}
-
 variable "run_migrations_on_apply" {
   description = "Run the LiteLLM schema migration as a one-off ECS task, and gate the service rollout on its exit code (needs the AWS CLI where Terraform runs). Disable only when running the migration out of band."
   type        = bool
   default     = true
+}
+
+variable "alarm_email" {
+  description = "Optional email address subscribed to the alarm topic (confirm the subscription from the email AWS sends)."
+  type        = string
+  default     = null
 }

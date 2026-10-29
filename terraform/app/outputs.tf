@@ -32,3 +32,13 @@ output "log_group_name" {
   description = "The LiteLLM CloudWatch log group (observability)."
   value       = aws_cloudwatch_log_group.litellm.name
 }
+
+output "alarm_topic_arn" {
+  description = "SNS topic receiving alarm and OK notifications."
+  value       = module.observability.sns_topic_arn
+}
+
+output "dashboard_name" {
+  description = "CloudWatch dashboard of the gateway."
+  value       = module.observability.dashboard_name
+}

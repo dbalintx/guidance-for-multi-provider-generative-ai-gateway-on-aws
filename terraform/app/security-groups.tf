@@ -59,7 +59,7 @@ resource "aws_vpc_security_group_ingress_rule" "alb" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_from_sg" {
-  for_each = toset(var.client_security_group_ids)
+  for_each = toset(concat(var.client_security_group_ids, var.vpn_security_group_id != null ? [var.vpn_security_group_id] : []))
 
   security_group_id            = aws_security_group.alb.id
   description                  = "Clients by security group (for example the demo Client VPN)"

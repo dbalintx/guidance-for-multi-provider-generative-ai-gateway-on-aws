@@ -1,6 +1,26 @@
 # Mode validation rules (Milestone 1 contract), run against mocked providers.
 
-mock_provider "aws" {}
+mock_provider "aws" {
+  # The observability module's policy documents and the ARNs its topic and key
+  # policy reference must look real to the provider's client-side validation.
+  mock_data "aws_iam_policy_document" {
+    defaults = {
+      json = "{}"
+    }
+  }
+
+  mock_resource "aws_sns_topic" {
+    defaults = {
+      arn = "arn:aws:sns:eu-west-1:111111111111:llmgw-alarms"
+    }
+  }
+
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn = "arn:aws:kms:eu-west-1:111111111111:key/00000000-0000-0000-0000-000000000000"
+    }
+  }
+}
 mock_provider "random" {}
 
 variables {
@@ -20,6 +40,9 @@ variables {
   master_key_secret_arn          = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/master-key-AbCdEf"
   salt_key_secret_arn            = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/salt-key-AbCdEf"
   data_ingress_security_group_id = "sg-0123456789abcdef0"
+  ui_password_secret_arn         = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/ui-password-AbCdEf"
+  rds_instance_identifier        = "llmgw-litellm-db"
+  redis_replication_group_id     = "llmgw-redis"
 
   # Never let a test apply run the local-exec migration helper.
   run_migrations_on_apply = false

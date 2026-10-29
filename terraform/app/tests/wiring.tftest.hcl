@@ -34,6 +34,26 @@ mock_provider "aws" {
       arn = "arn:aws:wafv2:eu-west-1:111111111111:regional/webacl/mock/00000000-0000-0000-0000-000000000000"
     }
   }
+
+  # The observability module's policy documents and the ARNs its topic and key
+  # policy reference must look real to the provider's client-side validation.
+  mock_data "aws_iam_policy_document" {
+    defaults = {
+      json = "{}"
+    }
+  }
+
+  mock_resource "aws_sns_topic" {
+    defaults = {
+      arn = "arn:aws:sns:eu-west-1:111111111111:llmgw-alarms"
+    }
+  }
+
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn = "arn:aws:kms:eu-west-1:111111111111:key/00000000-0000-0000-0000-000000000000"
+    }
+  }
 }
 mock_provider "random" {}
 
@@ -54,6 +74,9 @@ variables {
   master_key_secret_arn          = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/master-key-AbCdEf"
   salt_key_secret_arn            = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/salt-key-AbCdEf"
   data_ingress_security_group_id = "sg-0123456789abcdef0"
+  ui_password_secret_arn         = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/ui-password-AbCdEf"
+  rds_instance_identifier        = "llmgw-litellm-db"
+  redis_replication_group_id     = "llmgw-redis"
 
   # One provider key with the :json-key:: suffix, to prove the execution role
   # grant is on the secret ARN itself.
@@ -366,7 +389,6 @@ run "licence_and_ui_password_wired" {
 
   variables {
     litellm_license_secret_arn = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/licence-AbCdEf"
-    ui_password_secret_arn     = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/ui-password-AbCdEf"
   }
 
   assert {
@@ -377,9 +399,19 @@ run "licence_and_ui_password_wired" {
     error_message = "LITELLM_LICENSE must be wired exactly when the licence secret is given (2.9)."
   }
 
+  # The foundation always generates the UI password, so it is wired like the
+  # other foundation secrets — never the master-key fallback (2.12).
   assert {
-    condition     = contains([for s in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].secrets : s.name], "UI_PASSWORD")
-    error_message = "A given UI password secret must reach the container (2.12)."
+    condition = anytrue([
+      for s in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].secrets :
+      s.name == "UI_PASSWORD" && s.valueFrom == var.ui_password_secret_arn
+    ])
+    error_message = "The foundation's UI password secret must reach the container as UI_PASSWORD (2.12)."
+  }
+
+  assert {
+    condition     = contains(one([for st in jsondecode(aws_iam_role_policy.execution.policy).Statement : st.Resource if st.Sid == "Secrets"]), var.ui_password_secret_arn)
+    error_message = "The execution role must be able to read the UI password secret."
   }
 }
 
@@ -441,3 +473,32 @@ run "debug_log_level_warns" {
     error_message = "DEBUG is allowed temporarily; the plan warning is the guard (2.11)."
   }
 }
+
+run "no_sg_ingress_without_vpn_or_client_groups" {
+  command = apply
+
+  assert {
+    condition     = length(aws_vpc_security_group_ingress_rule.alb_from_sg) == 0
+    error_message = "No security-group ingress on the ALB unless a VPN or client groups are given."
+  }
+}
+
+run "foundation_vpn_security_group_admitted_to_alb" {
+  command = apply
+
+  variables {
+    vpn_security_group_id     = "sg-0aaaaaaaaaaaaaaa1"
+    client_security_group_ids = ["sg-0bbbbbbbbbbbbbbb2"]
+  }
+
+  assert {
+    condition     = aws_vpc_security_group_ingress_rule.alb_from_sg["sg-0aaaaaaaaaaaaaaa1"].referenced_security_group_id == "sg-0aaaaaaaaaaaaaaa1" && aws_vpc_security_group_ingress_rule.alb_from_sg["sg-0aaaaaaaaaaaaaaa1"].from_port == 443
+    error_message = "The foundation's VPN security group must reach the ALB's HTTPS listener."
+  }
+
+  assert {
+    condition     = length(aws_vpc_security_group_ingress_rule.alb_from_sg) == 2
+    error_message = "The VPN security group must add to (not replace) client_security_group_ids."
+  }
+}
+

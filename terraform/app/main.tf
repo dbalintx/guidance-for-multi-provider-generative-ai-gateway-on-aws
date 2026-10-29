@@ -10,5 +10,5 @@
 #                      gate, auto scaling
 #   iam.tf             least-privilege task and execution roles
 #   logs.tf            CloudWatch log group, ALB access-log and request-log buckets
-# Observability (alarms + dashboard) lands on its own Milestone 1 branch.
+#   observability.tf   alarms, dashboard and alarm topic (terraform/modules/observability)
 # No custom code in the request path: no sidecars, no wrappers, no LiteLLM patches.

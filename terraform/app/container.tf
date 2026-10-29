@@ -37,8 +37,8 @@ locals {
         LITELLM_MASTER_KEY = var.master_key_secret_arn
         LITELLM_SALT_KEY   = var.salt_key_secret_arn
         REDIS_PASSWORD     = var.redis_auth_secret_arn
+        UI_PASSWORD        = var.ui_password_secret_arn # separate from the master key (2.12)
       },
-      var.ui_password_secret_arn != null ? { UI_PASSWORD = var.ui_password_secret_arn } : {},
       # Reduced mode without a licence; Enterprise features need LITELLM_LICENSE (2.9 — no rebuild to switch).
       var.litellm_license_secret_arn != null ? { LITELLM_LICENSE = var.litellm_license_secret_arn } : {},
       var.provider_secret_arns,
