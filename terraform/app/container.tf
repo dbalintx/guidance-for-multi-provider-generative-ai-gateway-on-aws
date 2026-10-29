@@ -3,25 +3,53 @@
 # Do not scatter image, port, env, secrets or health-check settings elsewhere.
 locals {
   container = {
-    # Official upstream image, pinned stable version tag. v1.106.0 is the
-    # version the GEH hardening POC verified (signature, migration, logging);
-    # re-verify the current stable before bumping.
-    image = "ghcr.io/berriai/litellm:v1.106.0"
+    # Official upstream image, pinned stable version tag. v1.106.6 is the newest
+    # stable (non-prerelease) release of the 1.106 line the GEH hardening POC
+    # verified on v1.106.0 (signature, migration, logging); re-verify before
+    # moving to another minor line.
+    image = "ghcr.io/berriai/litellm:v1.106.6"
     port  = 4000
 
-    # Plain environment values. Service tasks must run DISABLE_SCHEMA_UPDATE=true;
-    # only the one-off migration task (--skip_server_startup) migrates.
-    environment = {
-      DISABLE_SCHEMA_UPDATE = "true"
-    }
+    # Plain environment values (secrets never go here). Service tasks must run
+    # DISABLE_SCHEMA_UPDATE=true: only the one-off migration task (which flips it
+    # and passes --skip_server_startup) migrates the schema.
+    environment = merge(
+      {
+        LITELLM_LOG                      = var.log_level # LiteLLM writes prompts at DEBUG; INFO is the default
+        JSON_LOGS                        = "True"
+        LITELLM_CONFIG_BUCKET_NAME       = var.config_bucket_name
+        LITELLM_CONFIG_BUCKET_OBJECT_KEY = local.config_object_key
+        LITELLM_CONFIG_SHA               = local.config_sha # a config change makes a new revision, so a rolling deploy
+        UI_USERNAME                      = "admin"
+        REDIS_HOST                       = var.redis_endpoint
+        REDIS_PORT                       = tostring(var.redis_port)
+        REDIS_SSL                        = "True"
+        DISABLE_SCHEMA_UPDATE            = "true"
+        LITELLM_LOCAL_MODEL_COST_MAP     = "True" # no start-up fetch from raw.githubusercontent.com
+      },
+      var.extra_environment,
+    )
 
     # name -> Secrets Manager ARN; values are injected by the runtime, never by Terraform.
-    secrets = {}
+    secrets = merge(
+      {
+        DATABASE_URL       = var.database_url_secret_arn
+        LITELLM_MASTER_KEY = var.master_key_secret_arn
+        LITELLM_SALT_KEY   = var.salt_key_secret_arn
+        REDIS_PASSWORD     = var.redis_auth_secret_arn
+      },
+      var.ui_password_secret_arn != null ? { UI_PASSWORD = var.ui_password_secret_arn } : {},
+      # Reduced mode without a licence; Enterprise features need LITELLM_LICENSE (2.9 — no rebuild to switch).
+      var.litellm_license_secret_arn != null ? { LITELLM_LICENSE = var.litellm_license_secret_arn } : {},
+      var.provider_secret_arns,
+    )
 
-    # TODO(m1 ecs branch): the POC-verified liveliness command against this path.
-    health_check_path = "/health/liveliness"
+    # POC-verified liveliness probe; the ALB target group checks the same path.
+    health_check_path    = "/health/liveliness"
+    health_check_command = ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=5)\" || exit 1"]
 
-    # Aligned at 120 s with the ALB idle timeout and target deregistration delay.
+    # Aligned at 120 s (Fargate's maximum) with the ALB idle timeout and the
+    # target deregistration delay: in-flight streams get this long to finish.
     stop_timeout = 120
   }
 }

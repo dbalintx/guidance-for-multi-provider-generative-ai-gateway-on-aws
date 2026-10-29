@@ -1,5 +1,14 @@
-# Child modules land on dedicated Milestone 1 branches:
-#   ALB + listeners + optional WAF + optional OIDC sign-in; ECS cluster/service/
-#   task + one-off migration task; rendered LiteLLM config (templatefile -> S3,
-#   content hash in the task definition); observability (alarms + dashboard).
+# The app root module, by file:
+#   container.tf       the ONE place container settings live (image, port, env,
+#                      secrets, health check, stop timeout) — the EKS example mirrors it
+#   config.tf          LiteLLM config rendered (templatefile) and uploaded to S3;
+#                      its hash rolls the tasks; plan-time warning checks
+#   alb.tf             ALB (internal by default), listeners, OIDC sign-in, DNS alias
+#   waf.tf             WAF, public mode only
+#   security-groups.tf ALB and task security groups
+#   ecs.tf             cluster, service + migration task definitions, migration
+#                      gate, auto scaling
+#   iam.tf             least-privilege task and execution roles
+#   logs.tf            CloudWatch log group, ALB access-log and request-log buckets
+# Observability (alarms + dashboard) lands on its own Milestone 1 branch.
 # No custom code in the request path: no sidecars, no wrappers, no LiteLLM patches.
