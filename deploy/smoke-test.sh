@@ -174,6 +174,8 @@ fi
 
 umask 077
 CURL_CFG="$(mktemp "${TMPDIR:-/tmp}/llm-gateway-smoke-hdr.XXXXXX")"
+KEY="${KEY//\\/\\\\}"
+KEY="${KEY//\"/\\\"}"
 printf 'header = "Authorization: Bearer %s"\n' "$KEY" >"$CURL_CFG"
 unset KEY
 
