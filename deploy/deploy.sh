@@ -109,7 +109,10 @@ plan_and_apply "foundation" "$FOUNDATION_DIR"
 
 # Wire foundation outputs into app as plain input variables (names match 1:1).
 # Null-valued outputs (e.g. kms_key_arn without a customer key) are omitted by
-# `terraform output -json`; the matching app variables default to null.
+# `terraform output -json`; the matching app variables default to null. This
+# file comes after terraform.tfvars on the command line, so for names both
+# carry (vpc_id, subnets, vpc_cidr, kms_key_arn, ...) the foundation's actual
+# values win.
 mkdir -p "$GEN_DIR"
 FOUNDATION_OUTPUTS="${GEN_DIR}/foundation-outputs.tfvars.json"
 terraform -chdir="$FOUNDATION_DIR" output -json \

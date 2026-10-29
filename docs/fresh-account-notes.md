@@ -13,7 +13,15 @@ Working notes collected during Milestone 1 deploy testing in a brand-new, never-
 - **RDS Enhanced Monitoring / Performance Insights.** The foundation creates the monitoring role itself (`<deployment>-rds-monitoring`), but the deploying principal needs `iam:CreateRole`, `iam:AttachRolePolicy` and `iam:PassRole` for it. Performance Insights must be available for the chosen instance class (it is for `db.t3.small`, the default).
 - **Availability Zones.** The created VPC takes the first two available AZs. Accounts whose default region has fewer than two usable AZs (rare; some opt-in regions or capacity-restricted AZs) cannot deploy; bring-your-own-VPC validation enforces two AZs as well.
 - **ElastiCache auth + TLS from clients.** Redis requires TLS (`transit_encryption_mode = "required"`) and an auth token. Any client beyond the gateway (for example something admitted via `extra_data_ingress_cidrs`) must connect with `rediss://` and the token from the Redis auth secret — plain `redis://` connections are refused at the protocol level, which looks like a timeout from naive clients.
+- **The gateway image comes from ghcr.io, so tasks need outbound internet.** The official image `ghcr.io/berriai/litellm` is pulled by Fargate through the task subnets' route to the internet (the created VPC's NAT gateway, or your own egress). ECR VPC endpoints do not help: the image is not in ECR (mirroring is below the line). In no-internet mode (`disable_outbound_network_access = true`), or in a bring-your-own VPC without egress, tasks fail with `CannotPullContainerError`. The image pull does not go through `HTTPS_PROXY`, so `egress_proxy_configured` does not cover it either.
+- **Demo Client VPN certificates must be RSA 1024 or 2048.** Client VPN rejects other key types and sizes (ECDSA, RSA 4096) at import or endpoint creation. `deploy/setup-vpn.sh certs` generates RSA 2048.
+- **Demo Client VPN is billed by the hour.** Each subnet association is billed for every hour the endpoint exists, plus each connected client per hour. The foundation associates one private subnet, which is enough to reach the whole VPC. Set `create_vpn = false` and deploy again once the trial is over.
+- **Demo Client VPN availability delay.** The apply returns before the endpoint is usable. Clients can connect only once the endpoint state is `available`, which can take several minutes after `terraform apply` completes. Run `deploy/setup-vpn.sh profile` after that.
 
 ## Discovered during testing
 
 (append entries as `YYYY-MM-DD — <symptom> — <cause> — <fix/prerequisite>`)
+
+## Limitations
+
+- **A customer KMS key also encrypts the alarm topic.** With `kms_key_arn` set, the app's observability module encrypts the alarm SNS topic with that key instead of creating a dedicated one. CloudWatch can publish to the topic only if the key policy grants `cloudwatch.amazonaws.com` `kms:Decrypt` and `kms:GenerateDataKey*`. Without that grant the deploy succeeds and the alarms change state, but no notification is delivered. Add this grant to the key-policy requirements above. With `kms_key_arn = null` the module creates a key with the right policy.
