@@ -14,8 +14,3 @@ resource "aws_cloudformation_stack" "guidance_deployment_metrics" {
     }
   })
 }
-
-# Child modules land on dedicated Milestone 1 branches:
-#   vpc-validation (create-or-bring VPC), RDS PostgreSQL Multi-AZ,
-#   ElastiCache Redis, S3 config bucket, Secrets Manager secrets,
-#   optional customer KMS key, optional demo Client VPN.

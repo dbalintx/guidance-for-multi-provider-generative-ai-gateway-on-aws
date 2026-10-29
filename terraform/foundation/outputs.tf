@@ -1,65 +1,72 @@
-# The EKS-compatibility surface (Milestone 1 contract / decisions.md): everything
-# a non-ECS consumer of the foundation needs. `app` consumes these through plain
-# input variables only — deploy/deploy.sh wires `terraform output -json` from
-# this root module into terraform/app. Keep names in sync with app's variables.
-#
-# Null values are placeholders until the owning Milestone 1 branch wires the
-# real resource; they are listed here so the output surface (and the deploy
-# wiring) is fixed from the start.
+# The EKS-compatibility surface (Milestone 1 contract / decisions.md):
+# everything a non-ECS consumer of the foundation needs. `app` consumes these
+# through plain input variables only — deploy/deploy.sh wires
+# `terraform output -json` from this root module into terraform/app. Keep names
+# in sync with app's variables. Secret ARNs only — never secret values.
 
 output "vpc_id" {
   description = "The VPC everything runs in (created or brought)."
-  value       = var.vpc_id # TODO(m1 network branch): created VPC when var.vpc_id is null
+  value       = local.vpc_id
 }
 
 output "private_subnet_ids" {
   description = "Private subnets for the gateway tasks and data stores."
-  value       = var.private_subnet_ids # TODO(m1 network branch): created subnets when creating the VPC
+  value       = local.private_subnet_ids
+}
+
+output "public_subnet_ids" {
+  description = "Public subnets for an internet-facing entry point (empty in private no-internet or BYO-private deployments)."
+  value       = local.public_subnet_ids
 }
 
 output "vpc_cidr" {
   description = "The VPC's IPv4 CIDR."
-  value       = null # TODO(m1 network branch)
+  value       = local.vpc_cidr
 }
 
 output "db_endpoint" {
   description = "RDS PostgreSQL endpoint (host:port)."
-  value       = null # TODO(m1 data branch)
+  value       = aws_db_instance.database.endpoint
 }
 
 output "database_url_secret_arn" {
   description = "Secrets Manager ARN of the full DATABASE_URL (the value never appears in state outputs or variables)."
-  value       = null # TODO(m1 data branch)
+  value       = aws_secretsmanager_secret.database_url.arn
 }
 
 output "redis_endpoint" {
   description = "ElastiCache Redis primary endpoint."
-  value       = null # TODO(m1 data branch)
+  value       = aws_elasticache_replication_group.redis.primary_endpoint_address
 }
 
 output "redis_port" {
   description = "ElastiCache Redis port."
-  value       = null # TODO(m1 data branch)
+  value       = local.redis_port
 }
 
 output "redis_auth_secret_arn" {
   description = "Secrets Manager ARN of the Redis auth token."
-  value       = null # TODO(m1 data branch)
+  value       = aws_secretsmanager_secret.redis_auth.arn
 }
 
 output "config_bucket_name" {
   description = "Versioned S3 bucket holding the rendered LiteLLM config."
-  value       = null # TODO(m1 data branch)
+  value       = aws_s3_bucket.config.bucket
 }
 
 output "master_key_secret_arn" {
   description = "Secrets Manager ARN of the generated LiteLLM master key."
-  value       = null # TODO(m1 secrets branch)
+  value       = aws_secretsmanager_secret.master_key.arn
 }
 
 output "salt_key_secret_arn" {
   description = "Secrets Manager ARN of the generated LiteLLM salt key (never rotate it)."
-  value       = null # TODO(m1 secrets branch)
+  value       = aws_secretsmanager_secret.salt_key.arn
+}
+
+output "ui_password_secret_arn" {
+  description = "Secrets Manager ARN of the LiteLLM admin UI password (separate from the master key)."
+  value       = aws_secretsmanager_secret.ui_password.arn
 }
 
 output "kms_key_arn" {
@@ -69,5 +76,5 @@ output "kms_key_arn" {
 
 output "data_ingress_security_group_id" {
   description = "The security group whose membership grants access to RDS and Redis; app attaches it to the gateway tasks."
-  value       = null # TODO(m1 data branch)
+  value       = aws_security_group.data_ingress.id
 }

@@ -18,15 +18,82 @@ variable "tags" {
 }
 
 variable "vpc_id" {
-  description = "Bring-your-own VPC ID. Leave null to create a VPC. BYO subnets are validated before anything is created (vpc-validation module, separate Milestone 1 branch)."
+  description = "Bring-your-own VPC ID. Leave null to create a VPC. BYO subnets are listed explicitly and validated at plan time, before anything is created (vpc-validation.tf)."
   type        = string
   default     = null
+
+  validation {
+    condition     = var.vpc_id == null ? length(var.private_subnet_ids) == 0 : length(var.private_subnet_ids) >= 2
+    error_message = "With vpc_id set, list at least two private subnets in private_subnet_ids; when creating a VPC (vpc_id = null), leave private_subnet_ids empty."
+  }
 }
 
 variable "private_subnet_ids" {
   description = "Bring-your-own VPC only: at least two private subnets in different Availability Zones."
   type        = list(string)
   default     = []
+}
+
+variable "public_subnet_ids" {
+  description = "Bring-your-own VPC, public mode only: public subnets in at least two Availability Zones for the internet-facing entry point."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = var.vpc_id != null || length(var.public_subnet_ids) == 0
+    error_message = "public_subnet_ids is only used with a bring-your-own vpc_id; when creating a VPC, public subnets are created as needed."
+  }
+}
+
+variable "public_mode" {
+  description = "Shared with the app root module (one terraform.tfvars feeds both): the entry point is internet-facing, so the network needs public subnets in two Availability Zones. Foundation only validates/creates the subnets; it knows nothing about what runs in them."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !(var.public_mode && var.disable_outbound_network_access)
+    error_message = "public_mode needs an internet gateway; it cannot be combined with disable_outbound_network_access."
+  }
+}
+
+variable "vpc_cidr" {
+  description = "IPv4 CIDR for the created VPC. Ignored for a bring-your-own VPC."
+  type        = string
+  default     = "10.0.0.0/16"
+
+  validation {
+    condition     = can(cidrsubnet(var.vpc_cidr, 3, 3)) && tonumber(split("/", var.vpc_cidr)[1]) <= 24
+    error_message = "vpc_cidr must be an IPv4 CIDR no smaller than /24, so four subnets can be carved out of it."
+  }
+}
+
+variable "disable_outbound_network_access" {
+  description = "No-internet mode for the created VPC: no internet gateway, no NAT, AWS services through VPC endpoints only. The online licence check, an IdP and non-Bedrock providers are unreachable without an egress proxy."
+  type        = bool
+  default     = false
+}
+
+variable "create_vpc_endpoints_in_existing_vpc" {
+  description = "Bring-your-own VPC only: also create the interface/gateway VPC endpoints in it. Leave false when the VPC already has them."
+  type        = bool
+  default     = false
+}
+
+variable "egress_proxy_configured" {
+  description = "An HTTPS proxy handles outbound traffic from the private subnets. Only suppresses the no-egress warning; the proxy itself is configured on the gateway."
+  type        = bool
+  default     = false
+}
+
+variable "max_gateway_instances" {
+  description = "Largest number of gateway replicas expected to run concurrently, used only to check free IP addresses in bring-your-own subnets (rolling deploys run up to twice this)."
+  type        = number
+  default     = 4
+
+  validation {
+    condition     = var.max_gateway_instances >= 1
+    error_message = "max_gateway_instances must be at least 1."
+  }
 }
 
 variable "extra_data_ingress_security_group_ids" {
@@ -61,4 +128,67 @@ variable "deletion_protection" {
   description = "Protects the database from deletion and keeps buckets on destroy. Set to false and apply before undeploying."
   type        = bool
   default     = true
+}
+
+variable "secret_recovery_window_days" {
+  description = "Recovery window for deleted secrets. 0 deletes immediately (test deployments only)."
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.secret_recovery_window_days == 0 || (var.secret_recovery_window_days >= 7 && var.secret_recovery_window_days <= 30)
+    error_message = "secret_recovery_window_days must be 0 (immediate, tests only) or between 7 and 30."
+  }
+}
+
+variable "log_retention_days" {
+  description = "CloudWatch retention for the foundation's log groups (VPC flow logs)."
+  type        = number
+  default     = 90
+}
+
+variable "db_engine_version" {
+  description = "PostgreSQL engine version. A major version (for example \"17\") lets RDS pick the latest minor release."
+  type        = string
+  default     = "17"
+}
+
+variable "rds_instance_class" {
+  description = "Instance class for the RDS database."
+  type        = string
+  default     = "db.t3.small"
+}
+
+variable "rds_allocated_storage" {
+  description = "Allocated storage in GB for the RDS database."
+  type        = number
+  default     = 20
+}
+
+variable "db_backup_retention_days" {
+  description = "RDS automated backup retention in days."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.db_backup_retention_days >= 1 && var.db_backup_retention_days <= 35
+    error_message = "db_backup_retention_days must be between 1 and 35."
+  }
+}
+
+variable "redis_node_type" {
+  description = "Node type for the Redis cache clusters."
+  type        = string
+  default     = "cache.t3.micro"
+}
+
+variable "redis_num_cache_clusters" {
+  description = "Number of Redis cache clusters (primary + replicas). Multi-AZ needs at least 2."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.redis_num_cache_clusters >= 2
+    error_message = "redis_num_cache_clusters must be at least 2: Multi-AZ with automatic failover needs a replica."
+  }
 }
