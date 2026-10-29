@@ -192,3 +192,45 @@ variable "redis_num_cache_clusters" {
     error_message = "redis_num_cache_clusters must be at least 2: Multi-AZ with automatic failover needs a replica."
   }
 }
+
+# --- Optional demo Client VPN (terraform/modules/vpn) ---
+
+variable "create_vpn" {
+  description = "Create the demo/test Client VPN into the VPC (mutual TLS, split tunnel, VPC range only). Not a production access path. Run deploy/setup-vpn.sh certs first for the two certificate ARNs."
+  type        = bool
+  default     = false
+}
+
+variable "vpn_server_certificate_arn" {
+  description = "ACM ARN of the Client VPN server certificate (printed by deploy/setup-vpn.sh certs). Required when create_vpn."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = !var.create_vpn || var.vpn_server_certificate_arn != null
+    error_message = "create_vpn needs vpn_server_certificate_arn (run deploy/setup-vpn.sh certs to create and import it)."
+  }
+}
+
+variable "vpn_client_root_certificate_arn" {
+  description = "ACM ARN whose chain validates the VPN client certificate (printed by deploy/setup-vpn.sh certs). Required when create_vpn."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = !var.create_vpn || var.vpn_client_root_certificate_arn != null
+    error_message = "create_vpn needs vpn_client_root_certificate_arn (run deploy/setup-vpn.sh certs to create and import it)."
+  }
+}
+
+variable "vpn_client_cidr" {
+  description = "Address range VPN clients get (a /12 to /22 that must not overlap the VPC CIDR)."
+  type        = string
+  default     = "10.250.0.0/22"
+}
+
+variable "vpn_egress_ports" {
+  description = "TCP ports VPN clients may reach in the VPC. The default reaches the HTTPS listener; an allow_insecure_http trial needs [443, 80]."
+  type        = list(number)
+  default     = [443]
+}

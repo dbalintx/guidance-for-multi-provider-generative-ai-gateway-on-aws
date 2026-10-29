@@ -355,3 +355,43 @@ run "resource_names_derive_from_deployment_name" {
     error_message = "Every resource name must derive from deployment_name so two deployments in one account do not collide."
   }
 }
+
+# deploy/smoke-test.sh --key-secret-arn reads SecretString as-is, so the master
+# key secret must hold the bare key, not a JSON document.
+run "master_key_secret_is_a_plain_string" {
+  command = plan
+
+  override_resource {
+    target          = random_password.master_key
+    override_during = plan
+    values          = { result = "mockedmasterkey123456" }
+  }
+
+  assert {
+    condition     = aws_secretsmanager_secret_version.master_key.secret_string == "sk-mockedmasterkey123456"
+    error_message = "The master key secret must be the plain sk-... key (smoke-test.sh --key-secret-arn uses SecretString verbatim)."
+  }
+
+  assert {
+    condition     = !can(jsondecode(aws_secretsmanager_secret_version.master_key.secret_string))
+    error_message = "The master key secret must not be JSON."
+  }
+}
+
+run "monitoring_identifiers_exported" {
+  command = plan
+
+  variables {
+    redis_num_cache_clusters = 3
+  }
+
+  assert {
+    condition     = output.rds_instance_identifier == "llmgw-litellm-db" && output.rds_instance_identifier == aws_db_instance.database.identifier
+    error_message = "rds_instance_identifier must be the RDS instance identifier (app alarms use it as DBInstanceIdentifier)."
+  }
+
+  assert {
+    condition     = output.redis_replication_group_id == "llmgw-redis" && output.redis_num_cache_clusters == 3
+    error_message = "The Redis replication group ID and node count must be exported for the app's per-node alarms."
+  }
+}

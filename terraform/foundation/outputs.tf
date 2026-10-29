@@ -78,3 +78,25 @@ output "data_ingress_security_group_id" {
   description = "The security group whose membership grants access to RDS and Redis; app attaches it to the gateway tasks."
   value       = aws_security_group.data_ingress.id
 }
+
+# Identifiers for monitoring (app's observability alarms and dashboard).
+
+output "rds_instance_identifier" {
+  description = "RDS instance identifier (CloudWatch DBInstanceIdentifier dimension)."
+  value       = aws_db_instance.database.identifier
+}
+
+output "redis_replication_group_id" {
+  description = "ElastiCache replication group ID; member clusters are <id>-001, <id>-002, ..."
+  value       = aws_elasticache_replication_group.redis.replication_group_id
+}
+
+output "redis_num_cache_clusters" {
+  description = "Number of Redis cache clusters (nodes) in the replication group."
+  value       = var.redis_num_cache_clusters
+}
+
+output "vpn_security_group_id" {
+  description = "Security group of the demo Client VPN, to admit on the gateway entry point; null when create_vpn is false."
+  value       = var.create_vpn ? module.vpn[0].security_group_id : null
+}
