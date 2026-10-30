@@ -1,5 +1,5 @@
 # Generated secrets, in Secrets Manager only: values never appear in variables
-# or outputs (ideation 2.12). The generated values do live in this root
+# or outputs. The generated values do live in this root
 # module's Terraform state — keep the state bucket encrypted and private
 # (deploy/deploy.sh creates it that way). Deleted secrets keep a recovery
 # window (7 days by default).
@@ -56,7 +56,7 @@ resource "aws_secretsmanager_secret_version" "redis_auth" {
 }
 
 # Without UI_PASSWORD, LiteLLM accepts the master key as the admin UI password.
-# A separate password keeps the master key break-glass only (ideation 2.12).
+# A separate password keeps the master key break-glass only.
 resource "random_password" "ui_password" {
   length  = 24
   special = false

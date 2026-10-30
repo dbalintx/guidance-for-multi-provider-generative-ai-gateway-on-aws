@@ -1,5 +1,5 @@
 # Bring-your-own VPC: validate it at plan time, before anything is created
-# (ideation 2.7). Hard problems fail the plan (preconditions); soft ones are
+# Hard problems fail the plan (preconditions); soft ones are
 # warnings (checks). Nothing here assumes what the client of the data stores
 # is — the IP arithmetic speaks of gateway replicas, not ECS tasks.
 

@@ -1,4 +1,4 @@
-# The observability module wired into the app (ideation 2.16), applied against
+# The observability module wired into the app, applied against
 # mocked providers: ALB/ECS/log-group names from the app, data-store identifiers
 # from foundation outputs, and the customer KMS key.
 # Nothing touches AWS.

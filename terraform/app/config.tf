@@ -40,7 +40,7 @@ resource "aws_s3_object" "litellm_config" {
   content_type = "application/yaml"
 }
 
-# Plan-time warnings (not errors), per 2.9 and 2.11.
+# Plan-time warnings (not errors): risky settings the plan should call out.
 
 check "debug_logging_is_temporary" {
   assert {

@@ -10,13 +10,13 @@ environment_variables:
 
 general_settings:
   # The ALB is the reverse proxy LiteLLM 1.106 expects to be told about:
-  # attribute UI sign-in attempts to the client, not to the ALB (POC-verified).
+  # attribute UI sign-in attempts to the client, not to the ALB.
   trusted_proxy_ranges: ${jsonencode(trusted_proxy_ranges)}
 
 litellm_settings:
   json_logs: true
   # Keeps prompts and responses out of every logging callback (S3, Langfuse, ...);
-  # spend and metadata are still logged (2.11).
+  # spend and metadata are still logged.
   turn_off_message_logging: true
 
   cache: true

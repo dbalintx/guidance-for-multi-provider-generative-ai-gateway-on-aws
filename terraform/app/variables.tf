@@ -111,7 +111,7 @@ variable "public_subnet_ids" {
 }
 
 variable "ui_password_secret_arn" {
-  description = "Foundation output: Secrets Manager ARN of the LiteLLM admin UI password, kept separate from the master key (2.12)."
+  description = "Foundation output: Secrets Manager ARN of the LiteLLM admin UI password, kept separate from the master key."
   type        = string
   default     = null
 }
@@ -140,7 +140,7 @@ variable "vpn_security_group_id" {
   default     = null
 }
 
-# --- Modes (Milestone 1 contract) ---
+# --- Modes ---
 
 variable "public_mode" {
   description = "false (default): internal ALB, reachable from the VPC / listed client ranges only. true: internet-facing ALB with WAF attached."
@@ -188,7 +188,7 @@ variable "record_name" {
 }
 
 variable "identity_provider" {
-  description = "Optional OIDC identity provider. When set, the ALB requires sign-in in front of the LiteLLM UI paths — unconditionally, in private and public mode alike (decisions.md). The client secret is given as a Secrets Manager ARN; its value never passes through variables."
+  description = "Optional OIDC identity provider. When set, the ALB requires sign-in in front of the LiteLLM UI paths — unconditionally, in private and public mode alike. The client secret is given as a Secrets Manager ARN; its value never passes through variables."
   type = object({
     issuer                 = string
     authorization_endpoint = string

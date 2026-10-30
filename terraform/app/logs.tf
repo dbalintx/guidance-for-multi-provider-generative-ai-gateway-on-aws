@@ -1,7 +1,7 @@
 # Log sinks owned by the app: the LiteLLM CloudWatch log group, the ALB access-log
 # bucket and the LiteLLM request-log bucket (metadata only — message logging is
-# off in the rendered config). 90-day retention by default (2.11); the buckets
-# are kept on destroy while deletion_protection is on (2.14).
+# off in the rendered config). 90-day retention by default; the buckets
+# are kept on destroy while deletion_protection is on.
 
 data "aws_caller_identity" "current" {}
 

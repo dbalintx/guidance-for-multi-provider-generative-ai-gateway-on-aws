@@ -12,7 +12,7 @@ The create-or-bring VPC validation lives in the foundation itself
 (`terraform/foundation/vpc-validation.tf`): it is plan-time locals and
 preconditions only, so a module would add indirection without reuse.
 
-Rules (Milestone 1 contract): providers pinned in every module; `aws` (+
+Rules: providers pinned in every module; `aws` (+
 `random`/`tls` where needed) only — no helm, no kubernetes anywhere. Every
 module ships `tests/*.tftest.hcl` with mocked providers covering its validation
 rules and key wiring.

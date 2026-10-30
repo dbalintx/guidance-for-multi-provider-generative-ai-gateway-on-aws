@@ -1,4 +1,4 @@
-# WAF, public mode only (2.5): managed common rules, known bad inputs, IP
+# WAF, public mode only: managed common rules, known bad inputs, IP
 # reputation and a per-IP rate limit. The body-size rule stays at count-only
 # because LLM requests routinely exceed its 8 KB limit.
 
@@ -39,7 +39,7 @@ resource "aws_wafv2_web_acl" "this" {
           }
         }
 
-        # Count-only: LLM request bodies routinely exceed the rule's 8 KB limit (2.5).
+        # Count-only: LLM request bodies routinely exceed the rule's 8 KB limit.
         rule_action_override {
           name = "SizeRestrictions_BODY"
           action_to_use {

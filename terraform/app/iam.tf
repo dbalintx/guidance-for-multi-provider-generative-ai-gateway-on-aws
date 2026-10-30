@@ -1,4 +1,4 @@
-# Least-privilege IAM (2.13). Policies are built with jsonencode (not the
+# Least-privilege IAM. Policies are built with jsonencode (not the
 # aws_iam_policy_document data source) so `terraform test` with mocked providers
 # can assert on their exact content.
 #

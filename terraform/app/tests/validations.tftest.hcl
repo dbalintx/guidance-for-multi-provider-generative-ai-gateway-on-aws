@@ -1,4 +1,4 @@
-# Mode validation rules (Milestone 1 contract), run against mocked providers.
+# Mode validation rules, run against mocked providers.
 
 mock_provider "aws" {
   # The observability module's policy documents and the ARNs its topic and key

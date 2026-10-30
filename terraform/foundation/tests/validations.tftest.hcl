@@ -85,7 +85,7 @@ run "valid_extra_ingress_accepted" {
 }
 
 # The extra-ingress inputs must be enforced on BOTH data-store security groups
-# (the generic non-ECS client hook — decisions.md).
+# (the generic hook for non-ECS clients).
 run "extra_ingress_enforced_on_rds_and_redis" {
   command = plan
 

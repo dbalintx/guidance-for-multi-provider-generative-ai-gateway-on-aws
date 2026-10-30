@@ -117,7 +117,7 @@ variable "log_metric_namespace" {
 }
 
 # ---------------------------------------------------------------------------
-# Thresholds (defaults modelled on GEH's litellmMonitoringConstruct.ts)
+# Thresholds
 # ---------------------------------------------------------------------------
 
 variable "alarm_period_seconds" {

@@ -1,6 +1,6 @@
 # Data-store access model: membership of the data-ingress security group is
 # what grants access to RDS and Redis. The app attaches it to the gateway
-# tasks; any other client (for example the Milestone 2 EKS example) is admitted
+# tasks; any other client (for example pods on an EKS cluster) is admitted
 # through the extra_data_ingress_* inputs. The data stores accept nothing else.
 
 locals {

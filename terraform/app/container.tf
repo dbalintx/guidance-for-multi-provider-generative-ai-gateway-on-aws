@@ -1,12 +1,11 @@
-# Container settings live in this ONE block (Milestone 1 contract): the ECS task
-# definition, the migration task and the Milestone 2 EKS example all mirror it.
+# Container settings live in this ONE block: the ECS task definition and the
+# migration task are built from it, and any non-ECS runtime can mirror it.
 # Do not scatter image, port, env, secrets or health-check settings elsewhere.
 locals {
   container = {
-    # Official upstream image, pinned stable version tag. v1.106.6 is the newest
-    # stable (non-prerelease) release of the 1.106 line the GEH hardening POC
-    # verified on v1.106.0 (signature, migration, logging); re-verify before
-    # moving to another minor line.
+    # Official upstream image at the pinned upstream release; update it
+    # deliberately, and re-check signal handling, the schema migration and the
+    # log format when moving to another minor line.
     # image_uri overrides it for air-gapped deployments that mirrored the image
     # into a private registry (for example the account's ECR).
     image = coalesce(var.image_uri, "ghcr.io/berriai/litellm:v1.106.6")
@@ -39,14 +38,14 @@ locals {
         LITELLM_MASTER_KEY = var.master_key_secret_arn
         LITELLM_SALT_KEY   = var.salt_key_secret_arn
         REDIS_PASSWORD     = var.redis_auth_secret_arn
-        UI_PASSWORD        = var.ui_password_secret_arn # separate from the master key (2.12)
+        UI_PASSWORD        = var.ui_password_secret_arn # separate from the master key
       },
-      # Reduced mode without a licence; Enterprise features need LITELLM_LICENSE (2.9 — no rebuild to switch).
+      # Reduced mode without a licence; Enterprise features need LITELLM_LICENSE (no rebuild to switch).
       var.litellm_license_secret_arn != null ? { LITELLM_LICENSE = var.litellm_license_secret_arn } : {},
       var.provider_secret_arns,
     )
 
-    # POC-verified liveliness probe; the ALB target group checks the same path.
+    # Liveliness probe (python3 ships in the image); the ALB target group checks the same path.
     health_check_path    = "/health/liveliness"
     health_check_command = ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=5)\" || exit 1"]
 

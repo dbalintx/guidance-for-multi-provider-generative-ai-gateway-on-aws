@@ -1,6 +1,6 @@
 # The app root module, by file:
 #   container.tf       the ONE place container settings live (image, port, env,
-#                      secrets, health check, stop timeout) — the EKS example mirrors it
+#                      secrets, health check, stop timeout) — any non-ECS runtime can mirror it
 #   config.tf          LiteLLM config rendered (templatefile) and uploaded to S3;
 #                      its hash rolls the tasks; plan-time warning checks
 #   alb.tf             ALB (internal by default), listeners, OIDC sign-in, DNS alias

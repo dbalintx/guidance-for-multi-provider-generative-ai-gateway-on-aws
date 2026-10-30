@@ -37,7 +37,7 @@ tags            = {}      # your own tags, merged into the defaults
 # create_vpc_endpoints_in_existing_vpc = false # also create the interface/gateway endpoints
 # max_gateway_instances                = 4     # free-IP check only (rolling deploys need twice this)
 
-# --- foundation: extra data-store clients (any non-ECS consumer, e.g. the EKS example) ---
+# --- foundation: extra data-store clients (any non-ECS consumer, e.g. pods on an EKS cluster) ---
 # extra_data_ingress_security_group_ids = []
 # extra_data_ingress_cidrs              = []
 

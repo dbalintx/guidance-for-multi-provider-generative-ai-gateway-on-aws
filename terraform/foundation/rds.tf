@@ -2,7 +2,7 @@
 # final snapshot, 30-day backups and changes applied in the maintenance window.
 # The database logs schema changes and slow queries only — never every
 # statement, which would send LiteLLM's spend logs, keys and team data to
-# CloudWatch (ideation 2.11).
+# CloudWatch.
 
 locals {
   db_username      = "llmproxy"

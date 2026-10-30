@@ -1,4 +1,4 @@
-# The EKS-compatibility surface (Milestone 1 contract / decisions.md):
+# The consumer surface of the foundation:
 # everything a non-ECS consumer of the foundation needs. `app` consumes these
 # through plain input variables only — deploy/deploy.sh wires
 # `terraform output -json` from this root module into terraform/app. Keep names

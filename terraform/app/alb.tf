@@ -2,7 +2,7 @@
 # to HTTPS with the customer's certificate; the allow_insecure_http trial serves
 # plain HTTP (private only — enforced by variable validation). When an identity
 # provider is set, the LiteLLM UI/sign-in paths sit behind the ALB's OIDC action
-# in BOTH modes (decisions.md); API paths stay on LiteLLM's own authentication.
+# in BOTH modes; API paths stay on LiteLLM's own authentication.
 
 locals {
   serve_http = var.allow_insecure_http # private trial only, enforced in variables.tf
@@ -88,7 +88,7 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# Unconditional in both modes when an identity provider is set (decisions.md).
+# Unconditional in both modes when an identity provider is set.
 # The OIDC action only works for browsers, so it covers the UI and sign-in paths.
 # It needs the HTTPS listener; identity_provider + allow_insecure_http is already
 # rejected by variable validation.

@@ -48,9 +48,8 @@ How missing data is treated depends on the alarm. `notBreaching` when no data ju
 wrong (5XX, latency, evictions, log errors); `breaching` when the metric is always published while the service
 exists (healthy hosts, running tasks); `missing` for periodic resource metrics.
 
-The thresholds come from GEH's `litellmMonitoringConstruct.ts`: error rate > 5 % with 2 of 3 datapoints, and
-latency > 5000 ms. GEH's cost-per-request alarm (> $0.50) has no equivalent here. Cost is not an AWS metric, and
-LiteLLM does not log it (see below).
+Default thresholds: error rate > 5 % with 2 of 3 datapoints, and p90 latency > 5 s. There is no cost-per-request
+alarm: cost is not an AWS metric, and LiteLLM does not log it (see below).
 
 ### Notes
 
@@ -71,7 +70,7 @@ LiteLLM does not log it (see below).
 
 ## LiteLLM log metrics
 
-Verified locally (POC) with `ghcr.io/berriai/litellm:v1.106.0`, `JSON_LOGS=True`, `LITELLM_LOG=INFO`,
+Observed locally with `ghcr.io/berriai/litellm:v1.106.0`, `JSON_LOGS=True`, `LITELLM_LOG=INFO`,
 `json_logs: true`, `turn_off_message_logging: true` and mock models:
 
 - Each log line is a JSON object with the keys `message`, `level`, `timestamp`, `component` and `logger`. Some lines

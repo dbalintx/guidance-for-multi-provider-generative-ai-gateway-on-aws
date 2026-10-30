@@ -1,4 +1,4 @@
-# Data-store hardening and key wiring (ideation 2.11, 2.12, 2.14), with mocked
+# Data-store protection, logging and key wiring, with mocked
 # providers. Default variables plan the created-VPC path.
 
 mock_provider "aws" {

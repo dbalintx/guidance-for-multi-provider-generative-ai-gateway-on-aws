@@ -1,5 +1,5 @@
 # Foundation: long-lived network + data. Nothing in this root module may
-# reference ECS, the ALB, or any other app concept (Milestone 1 contract).
+# reference ECS, the ALB, or any other app concept.
 
 variable "deployment_name" {
   description = "Name prefix for every resource. Two deployments in one account must use different names."
@@ -97,7 +97,7 @@ variable "max_gateway_instances" {
 }
 
 variable "extra_data_ingress_security_group_ids" {
-  description = "Extra security groups admitted to RDS and Redis, for any non-ECS client of the data stores (for example the Milestone 2 EKS example)."
+  description = "Extra security groups admitted to RDS and Redis, for any non-ECS client of the data stores (for example pods on an EKS cluster)."
   type        = list(string)
   default     = []
 

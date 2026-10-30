@@ -1,5 +1,5 @@
 # Plan-time validation of a bring-your-own VPC, with a mocked AWS provider
-# (no credentials, no AWS). Ports the ideation 2.7 fail and warn rules.
+# (no credentials, no AWS): every fail and warn rule.
 # Run: terraform init -backend=false && terraform test
 
 mock_provider "aws" {

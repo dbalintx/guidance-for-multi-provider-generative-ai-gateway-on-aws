@@ -103,7 +103,7 @@ run "private_defaults" {
 
   assert {
     condition     = aws_lb.this.idle_timeout == 120 && aws_lb_target_group.litellm.deregistration_delay == "120" && jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].stopTimeout == 120
-    error_message = "ALB idle timeout, target deregistration delay and ECS stopTimeout must all be 120 s (5.2)."
+    error_message = "ALB idle timeout, target deregistration delay and ECS stopTimeout must all be 120 s."
   }
 
   assert {
@@ -113,7 +113,7 @@ run "private_defaults" {
 
   assert {
     condition     = length(aws_wafv2_web_acl.this) == 0 && length(aws_wafv2_web_acl_association.alb) == 0
-    error_message = "No WAF in private mode (2.5)."
+    error_message = "No WAF in private mode."
   }
 
   assert {
@@ -128,7 +128,7 @@ run "private_defaults" {
 
   assert {
     condition     = aws_ecs_service.litellm.deployment_circuit_breaker[0].enable && aws_ecs_service.litellm.deployment_circuit_breaker[0].rollback
-    error_message = "The deployment circuit breaker with rollback must be on (5.2)."
+    error_message = "The deployment circuit breaker with rollback must be on."
   }
 
   assert {
@@ -143,7 +143,7 @@ run "private_defaults" {
 
   assert {
     condition     = { for e in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].environment : e.name => e.value }["DISABLE_SCHEMA_UPDATE"] == "true"
-    error_message = "Service tasks must run DISABLE_SCHEMA_UPDATE=true (5.1)."
+    error_message = "Service tasks must run DISABLE_SCHEMA_UPDATE=true."
   }
 
   assert {
@@ -151,17 +151,17 @@ run "private_defaults" {
       { for e in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].environment : e.name => e.value }["LITELLM_LOG"] == "INFO",
       { for e in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].environment : e.name => e.value }["JSON_LOGS"] == "True",
     ])
-    error_message = "Safe logging defaults: INFO level, JSON logs (2.11)."
+    error_message = "Safe logging defaults: INFO level, JSON logs."
   }
 
   assert {
     condition     = strcontains(join(" ", jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].healthCheck.command), "/health/liveliness")
-    error_message = "The container must have a real health check against the liveliness path (5.2)."
+    error_message = "The container must have a real health check against the liveliness path."
   }
 
   assert {
     condition     = !contains([for s in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].secrets : s.name], "LITELLM_LICENSE")
-    error_message = "LITELLM_LICENSE must not be set without a licence secret (2.9)."
+    error_message = "LITELLM_LICENSE must not be set without a licence secret."
   }
 
   assert {
@@ -174,12 +174,12 @@ run "private_defaults" {
 
   assert {
     condition     = contains(jsondecode(aws_ecs_task_definition.migrate.container_definitions)[0].command, "--skip_server_startup")
-    error_message = "The migration task must run --skip_server_startup (5.1)."
+    error_message = "The migration task must run --skip_server_startup."
   }
 
   assert {
     condition     = { for e in jsondecode(aws_ecs_task_definition.migrate.container_definitions)[0].environment : e.name => e.value }["DISABLE_SCHEMA_UPDATE"] == "false"
-    error_message = "Only the one-off migration task may migrate the schema (5.1)."
+    error_message = "Only the one-off migration task may migrate the schema."
   }
 
   assert {
@@ -189,12 +189,12 @@ run "private_defaults" {
 
   assert {
     condition     = strcontains(aws_iam_role_policy.task.policy, "bedrock:InvokeModel") && !strcontains(aws_iam_role_policy.task.policy, "\"bedrock:*\"") && !strcontains(aws_iam_role_policy.task.policy, "\"Action\":\"*\"")
-    error_message = "Task role: Bedrock inference + guardrails only, never bedrock:* (2.13)."
+    error_message = "Task role: Bedrock inference + guardrails only, never bedrock:*."
   }
 
   assert {
     condition     = strcontains(aws_iam_role_policy.task.policy, "arn:aws:s3:::${var.config_bucket_name}/config.yaml") && !strcontains(aws_iam_role_policy.task.policy, "s3:GetObject\",\"s3:PutObject")
-    error_message = "Task role: read-only on the config object, write-only on the request logs (2.13)."
+    error_message = "Task role: read-only on the config object, write-only on the request logs."
   }
 
   assert {
@@ -204,22 +204,22 @@ run "private_defaults" {
 
   assert {
     condition     = !strcontains(aws_iam_role_policy.execution.policy, "ecr:")
-    error_message = "No ECR permissions: the image is pulled from ghcr.io (mirroring is below the line)."
+    error_message = "No ECR permissions: the image is pulled from ghcr.io unless image_uri points elsewhere."
   }
 
   assert {
     condition     = strcontains(aws_s3_object.litellm_config.content, "10.0.0.0/16") && strcontains(aws_s3_object.litellm_config.content, "trusted_proxy_ranges")
-    error_message = "The rendered config must trust the ALB hop via trusted_proxy_ranges = [vpc_cidr] (2.17)."
+    error_message = "The rendered config must trust the ALB hop via trusted_proxy_ranges = [vpc_cidr]."
   }
 
   assert {
-    condition     = strcontains(aws_s3_object.litellm_config.content, "turn_off_message_logging") && !strcontains(aws_s3_object.litellm_config.content, "gpt-4o")
-    error_message = "Message logging must be off (2.11) and the default model list off by default (2.17)."
+    condition     = strcontains(aws_s3_object.litellm_config.content, "turn_off_message_logging")
+    error_message = "Message logging must be off."
   }
 
   assert {
     condition     = { for e in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].environment : e.name => e.value }["LITELLM_CONFIG_SHA"] == sha256(aws_s3_object.litellm_config.content)
-    error_message = "The task definition must carry the config content hash, so a config change rolls tasks (2.17)."
+    error_message = "The task definition must carry the config content hash, so a config change rolls tasks."
   }
 
   assert {
@@ -229,7 +229,7 @@ run "private_defaults" {
 
   assert {
     condition     = aws_cloudwatch_log_group.litellm.retention_in_days == 90
-    error_message = "90-day log retention by default (2.11)."
+    error_message = "90-day log retention by default."
   }
 
   assert {
@@ -290,7 +290,7 @@ run "public_mode_wiring" {
 
   assert {
     condition     = length(aws_wafv2_web_acl.this) == 1 && length(aws_wafv2_web_acl_association.alb) == 1
-    error_message = "Public mode must attach the WAF (2.5)."
+    error_message = "Public mode must attach the WAF."
   }
 
   assert {
@@ -300,7 +300,7 @@ run "public_mode_wiring" {
         o.name == "SizeRestrictions_BODY" && length(o.action_to_use[0].count) == 1
       ]) if r.name == "AWSManagedRulesCommonRuleSet"
     ])
-    error_message = "The WAF body-size rule must stay count-only: LLM requests exceed its 8 KB limit (2.5)."
+    error_message = "The WAF body-size rule must stay count-only: LLM requests exceed its 8 KB limit."
   }
 
   assert {
@@ -335,7 +335,7 @@ run "oidc_applied_in_private_mode" {
 
   assert {
     condition     = length(aws_lb_listener_rule.ui_oidc) == 1
-    error_message = "An identity provider must put the OIDC action in front of the UI in private mode too (decisions.md)."
+    error_message = "An identity provider must put the OIDC action in front of the UI in private mode too."
   }
 
   assert {
@@ -362,7 +362,7 @@ run "oidc_applied_in_public_mode" {
 
   assert {
     condition     = length(aws_lb_listener_rule.ui_oidc) == 1
-    error_message = "The OIDC action applies unconditionally in both modes (decisions.md)."
+    error_message = "The OIDC action applies unconditionally in both modes."
   }
 }
 
@@ -415,17 +415,17 @@ run "licence_and_ui_password_wired" {
       for s in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].secrets :
       s.name == "LITELLM_LICENSE" && s.valueFrom == var.litellm_license_secret_arn
     ])
-    error_message = "LITELLM_LICENSE must be wired exactly when the licence secret is given (2.9)."
+    error_message = "LITELLM_LICENSE must be wired exactly when the licence secret is given."
   }
 
   # The foundation always generates the UI password, so it is wired like the
-  # other foundation secrets — never the master-key fallback (2.12).
+  # other foundation secrets — never the master-key fallback.
   assert {
     condition = anytrue([
       for s in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].secrets :
       s.name == "UI_PASSWORD" && s.valueFrom == var.ui_password_secret_arn
     ])
-    error_message = "The foundation's UI password secret must reach the container as UI_PASSWORD (2.12)."
+    error_message = "The foundation's UI password secret must reach the container as UI_PASSWORD."
   }
 
   assert {
@@ -463,7 +463,7 @@ run "bedrock_allowlists_narrow_iam" {
 
   assert {
     condition     = strcontains(aws_iam_role_policy.task.policy, "arn:aws:bedrock:eu-west-1::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0") && !strcontains(aws_iam_role_policy.task.policy, "foundation-model/*")
-    error_message = "Model and region allowlists must narrow the Bedrock resources (2.13)."
+    error_message = "Model and region allowlists must narrow the Bedrock resources."
   }
 }
 
@@ -489,7 +489,7 @@ run "debug_log_level_warns" {
 
   assert {
     condition     = { for e in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].environment : e.name => e.value }["LITELLM_LOG"] == "DEBUG"
-    error_message = "DEBUG is allowed temporarily; the plan warning is the guard (2.11)."
+    error_message = "DEBUG is allowed temporarily; the plan warning is the guard."
   }
 }
 

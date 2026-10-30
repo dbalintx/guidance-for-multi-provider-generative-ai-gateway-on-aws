@@ -1,4 +1,4 @@
-# Alarms, dashboard and the encrypted alarm topic (ideation 2.16). Data-store
+# Alarms, dashboard and the encrypted alarm topic. Data-store
 # dimensions come from foundation outputs; Container Insights, which the
 # running-task alarm needs, is enabled on the cluster (ecs.tf).
 

@@ -14,7 +14,7 @@ resource "aws_ecs_cluster" "this" {
 locals {
   # The ECS shape of local.container (container.tf) — nothing is defined here,
   # only converted. No entryPoint/command override: the image's entrypoint execs
-  # `litellm --port 4000`, so the stop signal reaches LiteLLM (POC-verified).
+  # `litellm --port 4000`, so the stop signal reaches LiteLLM directly.
   litellm_container = {
     name         = "LiteLLMContainer"
     image        = local.container.image
@@ -64,7 +64,7 @@ resource "aws_ecs_task_definition" "litellm" {
   container_definitions = jsonencode([local.litellm_container])
 }
 
-# One-off migration task (5.1): same image, schema updates on, `--skip_server_startup`
+# One-off migration task: same image, schema updates on, `--skip_server_startup`
 # migrates and exits. Service tasks keep DISABLE_SCHEMA_UPDATE=true.
 resource "aws_ecs_task_definition" "migrate" {
   family                   = "${var.deployment_name}-migrate"
@@ -140,7 +140,7 @@ resource "aws_ecs_service" "litellm" {
     type = "ECS"
   }
 
-  # Auto scaling owns the task count after creation: redeploys never reset it (5.2).
+  # Auto scaling owns the task count after creation: redeploys never reset it.
   lifecycle {
     ignore_changes = [desired_count]
   }
