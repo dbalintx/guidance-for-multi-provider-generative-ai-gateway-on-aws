@@ -1,0 +1,45 @@
+# LiteLLM base configuration, rendered by terraform/app/config.tf (templatefile).
+# Nothing here is ECS-specific: every runtime value comes from an environment
+# variable, so the same rendered file loads from S3 (or as a ConfigMap) on EKS.
+
+environment_variables:
+  STORE_MODEL_IN_DB: "True"
+  # Do not set LITELLM_LOG here: it would override the log_level Terraform input.
+  # At DEBUG, LiteLLM writes every prompt and response to the logs (verified on
+  # 1.82.3 and 1.106.0).
+
+general_settings:
+  # The ALB is the reverse proxy LiteLLM 1.106 expects to be told about:
+  # attribute UI sign-in attempts to the client, not to the ALB.
+  trusted_proxy_ranges: ${jsonencode(trusted_proxy_ranges)}
+
+litellm_settings:
+  json_logs: true
+  # Keeps prompts and responses out of every logging callback (S3, Langfuse, ...);
+  # spend and metadata are still logged.
+  turn_off_message_logging: true
+
+  cache: true
+  cache_params:
+    type: redis
+    host: os.environ/REDIS_HOST
+    port: os.environ/REDIS_PORT
+    password: os.environ/REDIS_PASSWORD
+
+  # Request logs (metadata only, see above) to S3: the audit trail kept from the
+  # original guidance.
+  success_callback: ["s3"]
+  failure_callback: ["s3"]
+  service_callback: ["s3"]
+  s3_callback_params:
+    s3_bucket_name: ${jsonencode(request_log_bucket)}
+    s3_region_name: ${jsonencode(region)}
+
+router_settings:
+  # simple-shuffle is LiteLLM's recommended production strategy; usage-based
+  # routing adds a Redis round trip to every request. Redis stays attached so
+  # RPM/TPM limits are shared across tasks.
+  routing_strategy: simple-shuffle
+  redis_host: os.environ/REDIS_HOST
+  redis_port: os.environ/REDIS_PORT
+  redis_password: os.environ/REDIS_PASSWORD
