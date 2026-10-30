@@ -89,6 +89,7 @@ tags            = {}      # your own tags, merged into the defaults
 # cpu_target_utilization_percent    = 75
 # memory_target_utilization_percent = 70
 # run_migrations_on_apply           = true # one-off migration task gates the service rollout
+# image_uri                         = null # private copy of the image, e.g. from deploy/mirror-image.sh
 
 # --- app: LiteLLM config and environment ---
 # log_level              = "INFO" # DEBUG logs prompts: temporary troubleshooting only
