@@ -4,9 +4,10 @@
 #
 # Task role: Bedrock inference + guardrails only (optional model/region
 # allowlists), write-only request-log bucket, read-only config object.
-# Execution role: logs, the named secrets, the customer KMS key. No ECR: the
-# official upstream image is pulled from ghcr.io (image mirroring is below the
-# line), so no registry permissions are needed. No `*` actions anywhere.
+# Execution role: logs, the named secrets, the customer KMS key, and ECR pull
+# rights only when image_uri points at a private ECR repository. The default
+# upstream image comes from ghcr.io and needs no registry permissions. No `*`
+# actions anywhere.
 
 locals {
   assume_role_policy = jsonencode({
@@ -24,6 +25,13 @@ locals {
     for v in values(local.container.secrets) :
     regex("^(arn:[^:]+:secretsmanager:[^:]+:[^:]+:secret:[^:]+)", v)[0]
   ])
+
+  # image_uri as <account>.dkr.ecr.<region>.amazonaws.com/<repository>[:tag][@digest];
+  # any other registry (or the default ghcr.io image) yields no match.
+  ecr_image = var.image_uri == null ? null : one(regexall(
+    "^(?P<account>[0-9]{12})\\.dkr\\.ecr\\.(?P<region>[a-z0-9-]+)\\.amazonaws\\.com/(?P<repository>[a-z0-9][a-z0-9._/-]*?)(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(?:@sha256:[0-9a-f]{64})?$",
+    var.image_uri,
+  ))
 
   execution_policy = jsonencode({
     Version = "2012-10-17"
@@ -48,6 +56,21 @@ locals {
         Action   = "kms:Decrypt"
         Resource = var.kms_key_arn
       }] : [],
+      local.ecr_image != null ? [
+        {
+          Sid      = "EcrPull"
+          Effect   = "Allow"
+          Action   = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
+          Resource = "arn:aws:ecr:${local.ecr_image.region}:${local.ecr_image.account}:repository/${local.ecr_image.repository}"
+        },
+        {
+          Sid    = "EcrAuthToken"
+          Effect = "Allow"
+          Action = ["ecr:GetAuthorizationToken"]
+          # GetAuthorizationToken does not support resource-level permissions; "*" is the only accepted Resource.
+          Resource = "*"
+        },
+      ] : [],
     )
   })
 

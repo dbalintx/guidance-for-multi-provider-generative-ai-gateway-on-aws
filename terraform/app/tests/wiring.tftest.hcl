@@ -204,7 +204,7 @@ run "private_defaults" {
 
   assert {
     condition     = !strcontains(aws_iam_role_policy.execution.policy, "ecr:")
-    error_message = "No ECR permissions: the image is pulled from ghcr.io unless image_uri points elsewhere."
+    error_message = "No ECR permissions by default: the upstream image is pulled from ghcr.io."
   }
 
   assert {
@@ -518,6 +518,97 @@ run "foundation_vpn_security_group_admitted_to_alb" {
   assert {
     condition     = length(aws_vpc_security_group_ingress_rule.alb_from_sg) == 2
     error_message = "The VPN security group must add to (not replace) client_security_group_ids."
+  }
+}
+
+run "ecr_image_uri_grants_repository_scoped_pull" {
+  command = apply
+
+  variables {
+    image_uri = "222222222222.dkr.ecr.eu-central-1.amazonaws.com/platform/litellm@sha256:0a4015cbc1a045639e0f757404d39d527fed57efbff9305239178867dea043bf"
+  }
+
+  assert {
+    condition     = jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].image == var.image_uri
+    error_message = "image_uri must replace the upstream image in the task definition."
+  }
+
+  assert {
+    condition = one([for st in jsondecode(aws_iam_role_policy.execution.policy).Statement : st if st.Sid == "EcrPull"]) == {
+      Sid      = "EcrPull"
+      Effect   = "Allow"
+      Action   = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
+      Resource = "arn:aws:ecr:eu-central-1:222222222222:repository/platform/litellm"
+    }
+    error_message = "An ECR image_uri must grant image pulls on exactly that repository (account, region and name from the URI)."
+  }
+
+  assert {
+    condition = one([for st in jsondecode(aws_iam_role_policy.execution.policy).Statement : st if st.Sid == "EcrAuthToken"]) == {
+      Sid      = "EcrAuthToken"
+      Effect   = "Allow"
+      Action   = ["ecr:GetAuthorizationToken"]
+      Resource = "*"
+    }
+    error_message = "An ECR image_uri must grant ecr:GetAuthorizationToken (Resource \"*\" is the only form AWS accepts)."
+  }
+
+  assert {
+    condition     = sort([for a in flatten([for st in jsondecode(aws_iam_role_policy.execution.policy).Statement : st.Action]) : a if startswith(a, "ecr:")]) == sort(["ecr:BatchGetImage", "ecr:GetAuthorizationToken", "ecr:GetDownloadUrlForLayer"])
+    error_message = "An ECR image_uri must add exactly the three ECR pull actions, nothing broader."
+  }
+}
+
+run "ecr_image_uri_with_tag_scopes_the_repository" {
+  command = apply
+
+  variables {
+    image_uri = "222222222222.dkr.ecr.eu-central-1.amazonaws.com/litellm:v1.106.6"
+  }
+
+  assert {
+    condition     = one([for st in jsondecode(aws_iam_role_policy.execution.policy).Statement : st.Resource if st.Sid == "EcrPull"]) == "arn:aws:ecr:eu-central-1:222222222222:repository/litellm"
+    error_message = "The tag must not leak into the repository ARN."
+  }
+}
+
+run "default_image_has_no_ecr_statements" {
+  command = apply
+
+  assert {
+    condition     = !strcontains(aws_iam_role_policy.execution.policy, "ecr:") && length([for st in jsondecode(aws_iam_role_policy.execution.policy).Statement : st if startswith(st.Sid, "Ecr")]) == 0
+    error_message = "Without image_uri the execution role must carry no ECR statements."
+  }
+}
+
+run "non_ecr_registry_has_no_ecr_statements" {
+  command = apply
+
+  variables {
+    image_uri = "registry.example.com/platform/litellm@sha256:0a4015cbc1a045639e0f757404d39d527fed57efbff9305239178867dea043bf"
+  }
+
+  assert {
+    condition     = jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].image == var.image_uri
+    error_message = "A custom registry image_uri must still replace the upstream image."
+  }
+
+  assert {
+    condition     = !strcontains(aws_iam_role_policy.execution.policy, "ecr:")
+    error_message = "A non-ECR registry must not add ECR permissions."
+  }
+}
+
+run "ecr_lookalike_host_has_no_ecr_statements" {
+  command = apply
+
+  variables {
+    image_uri = "222222222222.dkr.ecr.eu-central-1.amazonaws.com.evil.example/litellm:v1.106.6"
+  }
+
+  assert {
+    condition     = !strcontains(aws_iam_role_policy.execution.policy, "ecr:")
+    error_message = "Only a genuine <account>.dkr.ecr.<region>.amazonaws.com host may add ECR permissions."
   }
 }
 

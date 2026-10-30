@@ -365,7 +365,7 @@ variable "alarm_email" {
 }
 
 variable "image_uri" {
-  description = "Override of the LiteLLM image URI, for air-gapped deployments pulling from a private registry (e.g. a mirrored copy in the account's ECR). null uses the pinned upstream image."
+  description = "Override of the LiteLLM image URI, for air-gapped deployments pulling from a private registry (e.g. a copy made with deploy/mirror-image.sh). For a private ECR URI (<account>.dkr.ecr.<region>.amazonaws.com/<repository>...) the execution role gets pull rights on that repository only; other registries get no extra permissions. null uses the pinned upstream image."
   type        = string
   default     = null
 }
