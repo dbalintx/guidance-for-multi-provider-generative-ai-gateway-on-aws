@@ -9,7 +9,7 @@ data "aws_region" "current" {}
 locals {
   config_object_key = "config.yaml"
 
-  override = var.config_override_file != null ? yamldecode(file(var.config_override_file)) : {}
+  override = yamldecode(var.config_override_file != null ? file(var.config_override_file) : "{}")
 
   base_config = yamldecode(templatefile("${path.module}/templates/config-base.yaml.tftpl", {
     trusted_proxy_ranges = [var.vpc_cidr]

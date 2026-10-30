@@ -252,6 +252,29 @@ run "rendered_config_has_no_models_by_default" {
   }
 }
 
+run "config_override_models_and_settings_merged" {
+  command = apply
+
+  variables {
+    config_override_file = "tests/fixtures/config-override.yaml"
+  }
+
+  assert {
+    condition     = [for m in yamldecode(aws_s3_object.litellm_config.content).model_list : m.model_name] == ["override-model"]
+    error_message = "config_override_file model_list entries must be the rendered model list."
+  }
+
+  assert {
+    condition     = yamldecode(aws_s3_object.litellm_config.content).router_settings.num_retries == 7
+    error_message = "config_override_file *_settings keys must override the base config."
+  }
+
+  assert {
+    condition     = yamldecode(aws_s3_object.litellm_config.content).litellm_settings.turn_off_message_logging == true
+    error_message = "Base settings not named in the override must survive the merge."
+  }
+}
+
 run "public_mode_wiring" {
   command = apply
 
