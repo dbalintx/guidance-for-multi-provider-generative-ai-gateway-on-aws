@@ -243,16 +243,12 @@ run "private_defaults" {
   }
 }
 
-run "default_model_list_opt_in" {
+run "rendered_config_has_no_models_by_default" {
   command = apply
 
-  variables {
-    include_default_models = true
-  }
-
   assert {
-    condition     = strcontains(aws_s3_object.litellm_config.content, "gpt-4o")
-    error_message = "include_default_models = true must append the legacy default model list."
+    condition     = length(yamldecode(aws_s3_object.litellm_config.content).model_list) == 0
+    error_message = "Without config_override_file the rendered config must carry no models (they are added in the LiteLLM UI)."
   }
 }
 

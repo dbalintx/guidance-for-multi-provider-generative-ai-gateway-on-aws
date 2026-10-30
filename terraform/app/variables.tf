@@ -306,12 +306,6 @@ variable "waf_rate_limit_per_5_min" {
   default     = 2000
 }
 
-variable "include_default_models" {
-  description = "Load the repository's legacy default model lists (config/default-config-base.yaml + the region file). Off by default: new deployments should add models in the LiteLLM UI (2.17)."
-  type        = bool
-  default     = false
-}
-
 variable "config_override_file" {
   description = "Optional YAML file merged over the rendered LiteLLM config: model_list entries are appended; general_settings, litellm_settings and router_settings keys override the base."
   type        = string

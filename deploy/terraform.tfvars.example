@@ -92,7 +92,6 @@ tags            = {}      # your own tags, merged into the defaults
 
 # --- app: LiteLLM config and environment ---
 # log_level              = "INFO" # DEBUG logs prompts: temporary troubleshooting only
-# include_default_models = false  # legacy model lists from config/; add models in the UI instead
 # config_override_file   = null   # YAML merged over the rendered config
 # extra_environment      = {}     # non-secret env vars, e.g. { HTTPS_PROXY = "http://proxy:3128" }
 # provider_secret_arns   = {}     # e.g. { OPENAI_API_KEY = "arn:aws:secretsmanager:..." }

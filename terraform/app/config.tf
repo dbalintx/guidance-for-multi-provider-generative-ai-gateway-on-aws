@@ -9,15 +9,6 @@ data "aws_region" "current" {}
 locals {
   config_object_key = "config.yaml"
 
-  # Legacy region model files (config/). Off by default (2.17): new deployments
-  # should add models in the LiteLLM UI. Only their model_list keys are read.
-  config_dir  = "${path.module}/../../config"
-  region_file = "${local.config_dir}/default-config-${data.aws_region.current.region}.yaml"
-  default_models = var.include_default_models ? concat(
-    try(yamldecode(file("${local.config_dir}/default-config-base.yaml")).model_list, []),
-    fileexists(local.region_file) ? try(yamldecode(file(local.region_file)).model_list, []) : [],
-  ) : []
-
   override = var.config_override_file != null ? yamldecode(file(var.config_override_file)) : {}
 
   base_config = yamldecode(templatefile("${path.module}/templates/config-base.yaml.tftpl", {
@@ -31,7 +22,7 @@ locals {
   litellm_config = merge(
     local.base_config,
     {
-      model_list       = concat(local.default_models, try(local.override.model_list, []))
+      model_list       = try(local.override.model_list, [])
       general_settings = merge(local.base_config.general_settings, try(local.override.general_settings, {}))
       litellm_settings = merge(local.base_config.litellm_settings, try(local.override.litellm_settings, {}))
       router_settings  = merge(local.base_config.router_settings, try(local.override.router_settings, {}))
