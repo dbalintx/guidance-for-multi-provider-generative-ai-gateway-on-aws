@@ -369,3 +369,9 @@ variable "alarm_email" {
   type        = string
   default     = null
 }
+
+variable "image_uri" {
+  description = "Override of the LiteLLM image URI, for air-gapped deployments pulling from a private registry (e.g. a mirrored copy in the account's ECR). null uses the pinned upstream image."
+  type        = string
+  default     = null
+}

@@ -7,7 +7,9 @@ locals {
     # stable (non-prerelease) release of the 1.106 line the GEH hardening POC
     # verified on v1.106.0 (signature, migration, logging); re-verify before
     # moving to another minor line.
-    image = "ghcr.io/berriai/litellm:v1.106.6"
+    # image_uri overrides it for air-gapped deployments that mirrored the image
+    # into a private registry (for example the account's ECR).
+    image = coalesce(var.image_uri, "ghcr.io/berriai/litellm:v1.106.6")
     port  = 4000
 
     # Plain environment values (secrets never go here). Service tasks must run
