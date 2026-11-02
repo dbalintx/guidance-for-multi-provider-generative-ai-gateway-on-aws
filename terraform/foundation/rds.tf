@@ -53,8 +53,11 @@ resource "aws_db_instance" "database" {
 
   storage_type      = "gp3"
   allocated_storage = var.rds_allocated_storage
-  storage_encrypted = true
-  kms_key_id        = var.kms_key_arn
+  # Storage autoscaling: LiteLLM writes a spend-log row per request and keeps
+  # them indefinitely by default, so a fixed size eventually fills up.
+  max_allocated_storage = var.rds_max_allocated_storage
+  storage_encrypted     = true
+  kms_key_id            = var.kms_key_arn
 
   db_name                = local.db_name
   username               = local.db_username

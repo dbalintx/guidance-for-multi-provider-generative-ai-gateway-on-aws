@@ -14,6 +14,8 @@ locals {
   public_subnet_ids  = local.creating_new_vpc ? [for s in aws_subnet.public : s.id] : var.public_subnet_ids
 
   create_endpoints = local.creating_new_vpc || var.create_vpc_endpoints_in_existing_vpc
+  # Interface endpoints are billed per hour and AZ; with egress they are optional.
+  create_interface_endpoints = local.create_endpoints && (var.disable_outbound_network_access || var.create_interface_endpoints)
 }
 
 data "aws_vpc" "existing" {

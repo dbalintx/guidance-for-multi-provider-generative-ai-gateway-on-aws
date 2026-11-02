@@ -125,7 +125,7 @@ check "byo_vpc_endpoints" {
   }
 
   assert {
-    condition     = !local.byo_vpc || local.create_endpoints || data.aws_vpc_endpoint.required.id != ""
-    error_message = "No Secrets Manager endpoint in the existing VPC and create_vpc_endpoints_in_existing_vpc = false. Private gateway replicas need endpoints for: ${join(", ", local.required_endpoints)} and the S3 gateway endpoint."
+    condition     = !local.byo_vpc || local.create_interface_endpoints || data.aws_vpc_endpoint.required.id != ""
+    error_message = "No Secrets Manager endpoint in the existing VPC, and none will be created (create_vpc_endpoints_in_existing_vpc plus create_interface_endpoints or disable_outbound_network_access). Private gateway replicas without egress need endpoints for: ${join(", ", local.required_endpoints)} and the S3 gateway endpoint."
   }
 }

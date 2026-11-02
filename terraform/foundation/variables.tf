@@ -74,7 +74,13 @@ variable "disable_outbound_network_access" {
 }
 
 variable "create_vpc_endpoints_in_existing_vpc" {
-  description = "Bring-your-own VPC only: also create the interface/gateway VPC endpoints in it. Leave false when the VPC already has them."
+  description = "Bring-your-own VPC only: create the VPC endpoints in it (the S3 gateway endpoint; interface endpoints follow create_interface_endpoints / disable_outbound_network_access). Leave false when the VPC already has them."
+  type        = bool
+  default     = false
+}
+
+variable "create_interface_endpoints" {
+  description = "Create the interface VPC endpoints (Secrets Manager, ECR, CloudWatch Logs, STS, Bedrock runtime) even though the VPC has internet egress. Always on in no-internet mode. Each endpoint costs per hour per Availability Zone; with a NAT gateway the traffic works without them."
   type        = bool
   default     = false
 }
@@ -163,6 +169,17 @@ variable "rds_allocated_storage" {
   description = "Allocated storage in GB for the RDS database."
   type        = number
   default     = 20
+}
+
+variable "rds_max_allocated_storage" {
+  description = "Storage autoscaling ceiling in GB for the RDS database. RDS grows the volume up to this size when free space runs low."
+  type        = number
+  default     = 200
+
+  validation {
+    condition     = var.rds_max_allocated_storage > var.rds_allocated_storage
+    error_message = "rds_max_allocated_storage must be larger than rds_allocated_storage, or storage autoscaling cannot grow the volume."
+  }
 }
 
 variable "db_backup_retention_days" {

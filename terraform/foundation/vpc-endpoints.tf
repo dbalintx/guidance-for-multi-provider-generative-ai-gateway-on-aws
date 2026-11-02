@@ -1,18 +1,20 @@
-# VPC endpoints: always created with a new VPC (the no-internet mode depends
-# on them), optionally added to a bring-your-own VPC. The set matches what a
-# private gateway replica needs: secrets, image pulls, logs, STS and Bedrock,
-# plus the S3 gateway for the config and log buckets.
+# VPC endpoints. The S3 gateway endpoint (free) is always created with a new
+# VPC, optionally in a bring-your-own VPC. The interface endpoints (billed per
+# hour and AZ) are created only in no-internet mode, where the gateway depends
+# on them, or on request (create_interface_endpoints). The set matches what a
+# private gateway replica needs: secrets, image pulls (a mirrored ECR image),
+# logs, STS and Bedrock inference. The Bedrock control-plane endpoint is not
+# included: inference only calls bedrock-runtime.
 
 data "aws_region" "current" {}
 
 locals {
-  interface_endpoints = local.create_endpoints ? {
+  interface_endpoints = local.create_interface_endpoints ? {
     secretsmanager  = "secretsmanager"
     ecr_api         = "ecr.api"
     ecr_dkr         = "ecr.dkr"
     logs            = "logs"
     sts             = "sts"
-    bedrock         = "bedrock"
     bedrock_runtime = "bedrock-runtime"
   } : {}
 
@@ -32,7 +34,7 @@ data "aws_route_tables" "existing_vpc_all" {
 }
 
 resource "aws_security_group" "vpc_endpoints" {
-  count       = local.create_endpoints ? 1 : 0
+  count       = local.create_interface_endpoints ? 1 : 0
   name        = "${var.deployment_name}-vpc-endpoints-sg"
   description = "Interface VPC endpoints: HTTPS from inside the VPC"
   vpc_id      = local.vpc_id
@@ -41,7 +43,7 @@ resource "aws_security_group" "vpc_endpoints" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "vpc_endpoints_https" {
-  count             = local.create_endpoints ? 1 : 0
+  count             = local.create_interface_endpoints ? 1 : 0
   security_group_id = aws_security_group.vpc_endpoints[0].id
   description       = "HTTPS from the VPC"
   cidr_ipv4         = local.vpc_cidr

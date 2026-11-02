@@ -297,8 +297,8 @@ run "created_vpc_has_flow_logs_endpoints_and_two_az_subnets" {
   }
 
   assert {
-    condition     = length(aws_vpc_endpoint.s3_gateway) == 1 && length(aws_vpc_endpoint.interface) == 7
-    error_message = "The created VPC must get the S3 gateway endpoint and the 7 interface endpoints."
+    condition     = length(aws_vpc_endpoint.s3_gateway) == 1 && length(aws_vpc_endpoint.interface) == 0 && length(aws_security_group.vpc_endpoints) == 0
+    error_message = "With internet egress the created VPC gets the free S3 gateway endpoint only; interface endpoints are opt-in."
   }
 
   assert {
@@ -325,8 +325,13 @@ run "no_internet_mode_has_no_igw_nat_or_public_subnets" {
   }
 
   assert {
-    condition     = length(aws_vpc_endpoint.interface) == 7 && length(aws_vpc_endpoint.s3_gateway) == 1
-    error_message = "No-internet mode depends on the VPC endpoints."
+    condition     = length(aws_vpc_endpoint.interface) == 6 && length(aws_vpc_endpoint.s3_gateway) == 1
+    error_message = "No-internet mode depends on the VPC endpoints: the S3 gateway and the 6 interface endpoints."
+  }
+
+  assert {
+    condition     = sort(keys(aws_vpc_endpoint.interface)) == sort(["secretsmanager", "ecr_api", "ecr_dkr", "logs", "sts", "bedrock_runtime"]) && !contains(keys(aws_vpc_endpoint.interface), "bedrock")
+    error_message = "The interface endpoints are the data-plane set; the Bedrock control-plane endpoint is not created."
   }
 
   assert {
@@ -394,4 +399,37 @@ run "monitoring_identifiers_exported" {
     condition     = output.redis_replication_group_id == "llmgw-redis" && output.redis_num_cache_clusters == 3
     error_message = "The Redis replication group ID and node count must be exported for the app's per-node alarms."
   }
+}
+
+run "interface_endpoints_on_request_with_egress" {
+  command = plan
+
+  variables {
+    create_interface_endpoints = true
+  }
+
+  assert {
+    condition     = length(aws_vpc_endpoint.interface) == 6 && length(aws_security_group.vpc_endpoints) == 1 && length(aws_nat_gateway.this) == 1
+    error_message = "create_interface_endpoints must add the 6 interface endpoints next to the NAT egress."
+  }
+}
+
+run "rds_storage_autoscaling_by_default" {
+  command = plan
+
+  assert {
+    condition     = aws_db_instance.database.allocated_storage == 20 && aws_db_instance.database.max_allocated_storage == 200
+    error_message = "RDS must start at 20 GB and autoscale storage up to 200 GB by default."
+  }
+}
+
+run "rds_max_storage_not_above_allocated_rejected" {
+  command = plan
+
+  variables {
+    rds_allocated_storage     = 100
+    rds_max_allocated_storage = 100
+  }
+
+  expect_failures = [var.rds_max_allocated_storage]
 }

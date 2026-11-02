@@ -243,3 +243,35 @@ run "missing_endpoints_is_a_warning" {
 
   expect_failures = [check.byo_vpc_endpoints]
 }
+
+# The BYO endpoint opt-in creates the S3 gateway endpoint; interface endpoints
+# also need create_interface_endpoints (or no-internet mode), so a VPC without
+# them still gets the warning.
+run "byo_endpoint_opt_in_without_interface_endpoints_still_warns" {
+  command = plan
+
+  override_data {
+    target = data.aws_vpc_endpoint.required
+    values = { id = "" }
+  }
+
+  expect_failures = [check.byo_vpc_endpoints]
+}
+
+run "byo_interface_endpoints_on_request" {
+  command = plan
+
+  variables {
+    create_interface_endpoints = true
+  }
+
+  override_data {
+    target = data.aws_vpc_endpoint.required
+    values = { id = "" }
+  }
+
+  assert {
+    condition     = length(aws_vpc_endpoint.interface) == 6 && length(aws_vpc_endpoint.s3_gateway) == 1
+    error_message = "With create_interface_endpoints the bring-your-own VPC gets the 6 interface endpoints and the S3 gateway."
+  }
+}
