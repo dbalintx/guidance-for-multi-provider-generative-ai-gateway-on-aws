@@ -29,6 +29,12 @@ mock_provider "aws" {
     }
   }
 
+  mock_resource "aws_cloudwatch_log_group" {
+    defaults = {
+      arn = "arn:aws:logs:eu-west-1:111111111111:log-group:mock"
+    }
+  }
+
   mock_resource "aws_wafv2_web_acl" {
     defaults = {
       arn = "arn:aws:wafv2:eu-west-1:111111111111:regional/webacl/mock/00000000-0000-0000-0000-000000000000"
@@ -283,6 +289,10 @@ run "public_mode_wiring" {
     public_subnet_ids = ["subnet-0fedcba9876543210", "subnet-0fedcba9876543211"]
   }
 
+  # Public mode without an identity provider: the plan warns (see the
+  # public_mode_without_identity_provider runs below).
+  expect_failures = [check.public_mode_without_identity_provider]
+
   assert {
     condition     = aws_lb.this.internal == false && toset(aws_lb.this.subnets) == toset(var.public_subnet_ids)
     error_message = "Public mode must create an internet-facing ALB in the public subnets."
@@ -304,6 +314,44 @@ run "public_mode_wiring" {
   }
 
   assert {
+    condition = alltrue([
+      for name in ["SizeRestrictions_BODY", "CrossSiteScripting_BODY", "GenericLFI_BODY", "GenericRFI_BODY", "EC2MetaDataSSRF_BODY", "RestrictedExtensions_URIPATH", "RestrictedExtensions_QUERYARGUMENTS"] :
+      anytrue([
+        for r in aws_wafv2_web_acl.this[0].rule : anytrue([
+          for o in r.statement[0].managed_rule_group_statement[0].rule_action_override :
+          o.name == name && length(o.action_to_use[0].count) == 1
+        ]) if r.name == "AWSManagedRulesCommonRuleSet"
+      ])
+    ])
+    error_message = "The common rule set body and file-extension rules must be count-only: prompts routinely contain HTML/JS, paths and URLs."
+  }
+
+  assert {
+    condition = alltrue([
+      for r in aws_wafv2_web_acl.this[0].rule : alltrue([
+        for o in r.statement[0].managed_rule_group_statement[0].rule_action_override :
+        endswith(o.name, "_BODY") || startswith(o.name, "RestrictedExtensions_") || o.name == "NoUserAgent_HEADER"
+      ]) if r.name == "AWSManagedRulesCommonRuleSet"
+    ])
+    error_message = "Only body, file-extension and the no-user-agent rules may be overridden; URI, query and header rules keep blocking."
+  }
+
+  assert {
+    condition     = length(aws_cloudwatch_log_group.waf) == 1 && aws_cloudwatch_log_group.waf[0].name == "aws-waf-logs-llmgw" && aws_cloudwatch_log_group.waf[0].retention_in_days == 90
+    error_message = "WAF logs must go to a log group named aws-waf-logs-<deployment_name> (an AWS requirement) with the default retention."
+  }
+
+  assert {
+    condition     = aws_wafv2_web_acl_logging_configuration.this[0].resource_arn == aws_wafv2_web_acl.this[0].arn && aws_wafv2_web_acl_logging_configuration.this[0].log_destination_configs == toset([aws_cloudwatch_log_group.waf[0].arn])
+    error_message = "WAF logging must be enabled for the web ACL into its log group."
+  }
+
+  assert {
+    condition     = toset([for f in aws_wafv2_web_acl_logging_configuration.this[0].redacted_fields : f.single_header[0].name]) == toset(["authorization", "x-litellm-api-key", "api-key", "cookie"])
+    error_message = "WAF logs must redact the API-key headers and cookies."
+  }
+
+  assert {
     condition     = contains([for k, v in aws_vpc_security_group_ingress_rule.alb : v.cidr_ipv4], "0.0.0.0/0")
     error_message = "Public mode admits the internet; the WAF and LiteLLM auth gate it."
   }
@@ -316,7 +364,8 @@ run "public_mode_needs_public_subnets" {
     public_mode = true
   }
 
-  expect_failures = [var.public_subnet_ids]
+  # Also public without an identity provider, so the plan warning fires too.
+  expect_failures = [var.public_subnet_ids, check.public_mode_without_identity_provider]
 }
 
 run "oidc_applied_in_private_mode" {
@@ -612,3 +661,80 @@ run "ecr_lookalike_host_has_no_ecr_statements" {
   }
 }
 
+# Public mode without an identity provider warns at plan time; the other three
+# combinations stay silent (a failing check fails a run that does not expect it).
+
+run "private_without_identity_provider_is_silent" {
+  command = plan
+
+  assert {
+    condition     = length(aws_wafv2_web_acl_logging_configuration.this) == 0 && length(aws_cloudwatch_log_group.waf) == 0
+    error_message = "Private mode has no WAF and therefore no WAF logging."
+  }
+}
+
+run "private_with_identity_provider_is_silent" {
+  command = plan
+
+  variables {
+    identity_provider = {
+      issuer                 = "https://login.example.com/tenant/v2.0"
+      authorization_endpoint = "https://login.example.com/tenant/oauth2/v2.0/authorize"
+      token_endpoint         = "https://login.example.com/tenant/oauth2/v2.0/token"
+      user_info_endpoint     = "https://graph.example.com/oidc/userinfo"
+      client_id              = "client"
+      client_secret_arn      = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/idp-AbCdEf"
+    }
+  }
+}
+
+run "public_with_identity_provider_is_silent" {
+  command = plan
+
+  variables {
+    public_mode       = true
+    public_subnet_ids = ["subnet-0fedcba9876543210", "subnet-0fedcba9876543211"]
+    identity_provider = {
+      issuer                 = "https://login.example.com/tenant/v2.0"
+      authorization_endpoint = "https://login.example.com/tenant/oauth2/v2.0/authorize"
+      token_endpoint         = "https://login.example.com/tenant/oauth2/v2.0/token"
+      user_info_endpoint     = "https://graph.example.com/oidc/userinfo"
+      client_id              = "client"
+      client_secret_arn      = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/idp-AbCdEf"
+    }
+  }
+}
+
+run "public_without_identity_provider_warns" {
+  command = plan
+
+  variables {
+    public_mode       = true
+    public_subnet_ids = ["subnet-0fedcba9876543210", "subnet-0fedcba9876543211"]
+  }
+
+  expect_failures = [check.public_mode_without_identity_provider]
+}
+
+
+run "response_cache_on_by_default" {
+  command = apply
+
+  assert {
+    condition     = yamldecode(aws_s3_object.litellm_config.content).litellm_settings.cache == true && yamldecode(aws_s3_object.litellm_config.content).litellm_settings.cache_params.type == "redis"
+    error_message = "The rendered config keeps LiteLLM's Redis response cache on by default."
+  }
+}
+
+run "response_cache_disabled_through_override" {
+  command = apply
+
+  variables {
+    config_override_file = "tests/fixtures/cache-off.yaml"
+  }
+
+  assert {
+    condition     = yamldecode(aws_s3_object.litellm_config.content).litellm_settings.cache == false && yamldecode(aws_s3_object.litellm_config.content).litellm_settings.turn_off_message_logging == true
+    error_message = "config_override_file must be able to switch the shared response cache off without dropping the other litellm_settings."
+  }
+}

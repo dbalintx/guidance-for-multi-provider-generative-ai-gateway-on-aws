@@ -55,3 +55,20 @@ check "enterprise_settings_need_licence" {
     error_message = "enable_jwt_auth is an Enterprise feature: without litellm_license_secret_arn LiteLLM answers 403 to JWTs (verified on 1.106.0)."
   }
 }
+
+check "public_mode_without_identity_provider" {
+  assert {
+    condition     = !(var.public_mode && var.identity_provider == null)
+    error_message = <<-EOT
+      PUBLIC MODE WITHOUT AN IDENTITY PROVIDER.
+      The LiteLLM admin UI will be reachable from the internet protected only by
+      the UI password and WAF. The UI can create keys, change models and read
+      spend for every team.
+      Fix: configure identity_provider, so the ALB requires sign-in in front of
+      the UI paths (API paths keep LiteLLM key authentication).
+      To proceed deliberately without it, apply this plan as is; this warning
+      does not block the deployment and repeats on every plan.
+    EOT
+  }
+}
+

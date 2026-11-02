@@ -29,12 +29,13 @@ tags            = {}      # your own tags, merged into the defaults
 # vpc_cidr                        = "10.0.0.0/16" # created VPC only; /24 or larger
 # disable_outbound_network_access = false         # no-internet mode: no IGW/NAT, VPC endpoints only (ghcr.io image pull needs egress — see notes)
 # egress_proxy_configured         = false         # only silences the no-egress warning
+# create_interface_endpoints      = false         # interface VPC endpoints despite egress (always on in no-internet mode; billed per hour and AZ)
 
 # --- foundation: bring your own VPC ---
 # vpc_id                               = "vpc-0123456789abcdef0"
 # private_subnet_ids                   = ["subnet-...", "subnet-..."] # 2+ private subnets in different AZs
 # public_subnet_ids                    = []    # public mode: 2+ public subnets in different AZs
-# create_vpc_endpoints_in_existing_vpc = false # also create the interface/gateway endpoints
+# create_vpc_endpoints_in_existing_vpc = false # S3 gateway endpoint; interface ones with create_interface_endpoints
 # max_gateway_instances                = 4     # free-IP check only (rolling deploys need twice this)
 
 # --- foundation: extra data-store clients (any non-ECS consumer, e.g. pods on an EKS cluster) ---
@@ -45,6 +46,7 @@ tags            = {}      # your own tags, merged into the defaults
 # db_engine_version           = "17"
 # rds_instance_class          = "db.t3.small"
 # rds_allocated_storage       = 20 # GB
+# rds_max_allocated_storage   = 200 # GB; storage autoscaling ceiling, must exceed rds_allocated_storage
 # db_backup_retention_days    = 30
 # redis_node_type             = "cache.t3.micro"
 # redis_num_cache_clusters    = 2 # Multi-AZ needs 2+
@@ -94,6 +96,12 @@ tags            = {}      # your own tags, merged into the defaults
 # --- app: LiteLLM config and environment ---
 # log_level              = "INFO" # DEBUG logs prompts: temporary troubleshooting only
 # config_override_file   = null   # YAML merged over the rendered config
+#   The rendered config turns on LiteLLM's Redis response cache, which is shared
+#   across all API keys (identical requests can return another caller's cached
+#   response; cached prompts/responses live in Redis). For multi-tenant or
+#   sensitive deployments, disable or tune it in the override file:
+#     litellm_settings:
+#       cache: false        # or keep it and set cache_params: { mode: default_off, ttl: 600, ... }
 # extra_environment      = {}     # non-secret env vars, e.g. { HTTPS_PROXY = "http://proxy:3128" }
 # provider_secret_arns   = {}     # e.g. { OPENAI_API_KEY = "arn:aws:secretsmanager:..." }
 
@@ -103,5 +111,6 @@ tags            = {}      # your own tags, merged into the defaults
 # cross_account_role_arns  = [] # explicit role ARNs; wildcards rejected
 
 # --- app: WAF (public mode) and alarms ---
-# waf_rate_limit_per_5_min = 2000
-# alarm_email              = null # subscribed to the alarm topic; confirm from the email
+# waf_rate_limit_per_5_min      = 2000
+# latency_p90_threshold_seconds = 60 # LLM responses take tens of seconds; 5XX alarms are the primary signal
+# alarm_email                   = null # subscribed to the alarm topic; confirm from the email

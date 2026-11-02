@@ -1,6 +1,22 @@
 # WAF, public mode only: managed common rules, known bad inputs, IP
-# reputation and a per-IP rate limit. The body-size rule stays at count-only
-# because LLM requests routinely exceed its 8 KB limit.
+# reputation and a per-IP rate limit. Requests are logged to CloudWatch so rule
+# matches (and false positives) can be triaged.
+
+locals {
+  # Common rule set rules that inspect the request body or file extensions, set
+  # to count-only: prompts routinely contain HTML/JS, file paths, URLs such as
+  # the instance-metadata address and file names, and exceed the 8 KB body-size
+  # limit. Rules inspecting the URI, query string and headers keep blocking.
+  waf_count_only_rules = [
+    "SizeRestrictions_BODY",
+    "CrossSiteScripting_BODY",
+    "GenericLFI_BODY",
+    "GenericRFI_BODY",
+    "EC2MetaDataSSRF_BODY",
+    "RestrictedExtensions_URIPATH",
+    "RestrictedExtensions_QUERYARGUMENTS",
+  ]
+}
 
 resource "aws_wafv2_web_acl" "this" {
   count       = var.public_mode ? 1 : 0
@@ -39,11 +55,13 @@ resource "aws_wafv2_web_acl" "this" {
           }
         }
 
-        # Count-only: LLM request bodies routinely exceed the rule's 8 KB limit.
-        rule_action_override {
-          name = "SizeRestrictions_BODY"
-          action_to_use {
-            count {}
+        dynamic "rule_action_override" {
+          for_each = local.waf_count_only_rules
+          content {
+            name = rule_action_override.value
+            action_to_use {
+              count {}
+            }
           }
         }
       }
@@ -129,3 +147,28 @@ resource "aws_wafv2_web_acl_association" "alb" {
   resource_arn = aws_lb.this.arn
   web_acl_arn  = aws_wafv2_web_acl.this[0].arn
 }
+
+# WAF requires the log group name to start with aws-waf-logs-. Credentials are
+# redacted: API keys travel in these headers, the ALB sign-in session in cookies.
+resource "aws_cloudwatch_log_group" "waf" {
+  count             = var.public_mode ? 1 : 0
+  name              = "aws-waf-logs-${var.deployment_name}"
+  retention_in_days = var.log_retention_days
+  kms_key_id        = var.kms_key_arn
+}
+
+resource "aws_wafv2_web_acl_logging_configuration" "this" {
+  count                   = var.public_mode ? 1 : 0
+  resource_arn            = aws_wafv2_web_acl.this[0].arn
+  log_destination_configs = [aws_cloudwatch_log_group.waf[0].arn]
+
+  dynamic "redacted_fields" {
+    for_each = ["authorization", "x-litellm-api-key", "api-key", "cookie"]
+    content {
+      single_header {
+        name = redacted_fields.value
+      }
+    }
+  }
+}
+

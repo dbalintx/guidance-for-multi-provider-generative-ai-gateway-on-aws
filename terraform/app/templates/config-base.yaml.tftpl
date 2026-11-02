@@ -19,6 +19,11 @@ litellm_settings:
   # spend and metadata are still logged.
   turn_off_message_logging: true
 
+  # Response cache in Redis. It is shared across all API keys: an identical
+  # request can return a response cached for another caller, and cached
+  # prompts and responses are stored in Redis. For multi-tenant or sensitive
+  # deployments, disable it or tune cache_params (mode, ttl) through
+  # config_override_file.
   cache: true
   cache_params:
     type: redis
