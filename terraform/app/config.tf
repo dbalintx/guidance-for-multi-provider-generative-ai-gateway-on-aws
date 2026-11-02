@@ -101,3 +101,10 @@ check "identity_provider_needs_outbound_access" {
   }
 }
 
+check "db_unavailable_requests_not_allowed" {
+  assert {
+    condition     = try(local.litellm_config.general_settings.allow_requests_on_db_unavailable, false) != true
+    error_message = "config_override_file sets general_settings.allow_requests_on_db_unavailable: true. During a database outage LiteLLM then admits ANY presented key, including invalid ones, without budgets. LiteLLM virtual keys are this gateway's only API authentication, so every database failover becomes an unauthenticated window. Remove the setting unless another layer authenticates every caller."
+  }
+}
+

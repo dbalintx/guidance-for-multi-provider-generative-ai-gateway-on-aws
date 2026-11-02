@@ -14,7 +14,7 @@ resource "aws_lb" "this" {
   internal                   = !var.public_mode
   subnets                    = var.public_mode ? var.public_subnet_ids : var.private_subnet_ids
   security_groups            = [aws_security_group.alb.id]
-  idle_timeout               = local.container.stop_timeout # 120 s, aligned with stopTimeout and deregistration
+  idle_timeout               = var.alb_idle_timeout_seconds
   drop_invalid_header_fields = true
   enable_deletion_protection = var.deletion_protection
 
@@ -52,7 +52,7 @@ resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.this.arn
   port              = 443
   protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-Res-2021-06" # TLS 1.3 + forward-secret TLS 1.2 AEAD suites only
   certificate_arn   = var.certificate_arn
 
   default_action {

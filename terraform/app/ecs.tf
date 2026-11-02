@@ -24,10 +24,13 @@ locals {
     secrets      = [for k, v in local.container.secrets : { name = k, valueFrom = v }]
     portMappings = [{ containerPort = local.container.port, protocol = "tcp" }]
     healthCheck = {
-      command     = local.container.health_check_command
-      interval    = 30
-      timeout     = 10
-      retries     = 3
+      command  = local.container.health_check_command
+      interval = 30
+      timeout  = 10
+      # 10 misses (about 5 minutes) before ECS replaces the task: a busy event
+      # loop that misses a few probes is not killed with its in-flight streams;
+      # the ALB health check already takes it out of rotation within ~90 s.
+      retries     = 10
       startPeriod = 60
     }
     logConfiguration = {

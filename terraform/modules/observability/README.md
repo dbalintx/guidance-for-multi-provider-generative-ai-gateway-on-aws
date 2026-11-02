@@ -36,7 +36,7 @@ All alarm names are `<deployment_name>-<key>`. They notify the SNS topic on ALAR
 | `ecs-cpu-high` / `ecs-memory-high` | `AWS/ECS` service CPU / memory | > 80 %, 4 of 5 |
 | `rds-cpu-high` | `CPUUtilization` | > 80 %, 4 of 5 |
 | `rds-free-storage-low` | `FreeStorageSpace` | < 5 GiB |
-| `rds-connections-high` | `DatabaseConnections` | > 100 (set this to about 80 % of `max_connections`) |
+| `rds-connections-high` | `DatabaseConnections` | > 450 (20 tasks x ~10 connections x 2 during a deploy; db.t4g.large allows ~880) |
 | `redis-engine-cpu-high` | `EngineCPUUtilization`, max across nodes | > 80 %, 4 of 5 |
 | `redis-memory-high` | `DatabaseMemoryUsagePercentage`, max across nodes | > 80 %, 4 of 5 |
 | `redis-evictions` | `Evictions`, max across nodes | > 0, 2 of 3 |

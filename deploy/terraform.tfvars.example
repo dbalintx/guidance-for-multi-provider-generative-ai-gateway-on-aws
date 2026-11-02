@@ -89,8 +89,9 @@ tags            = {}      # your own tags, merged into the defaults
 # vcpus                             = 2     # memory is 2 GiB per vCPU
 # desired_capacity                  = 2     # at creation only; auto scaling owns it afterwards
 # min_capacity                      = 2
-# max_capacity                      = 4
-# cpu_target_utilization_percent    = 75
+# max_capacity                      = 20 # keep max_gateway_instances (foundation) in step
+# cpu_target_utilization_percent    = 75 # calibrate with a load test (one LiteLLM worker per task)
+# alb_idle_timeout_seconds          = 600 # above the router worst case (3 x 120 s); KEEPALIVE_TIMEOUT follows (+5 s)
 # memory_target_utilization_percent = 70
 # run_migrations_on_apply           = true # one-off migration task gates the service rollout
 # migration_timeout_seconds         = 1200 # the apply stops the migration task and fails after this
@@ -115,6 +116,6 @@ tags            = {}      # your own tags, merged into the defaults
 # cross_account_role_arns  = [] # explicit role ARNs; wildcards rejected
 
 # --- app: WAF (public mode) and alarms ---
-# waf_rate_limit_per_5_min      = 2000
+# waf_rate_limit_per_5_min      = 2000 # per source IP; over the limit the WAF answers 429
 # latency_p90_threshold_seconds = 60 # LLM responses take tens of seconds; 5XX alarms are the primary signal
 # alarm_email                   = null # subscribed to the alarm topic; confirm from the email

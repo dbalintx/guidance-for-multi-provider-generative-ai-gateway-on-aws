@@ -109,8 +109,68 @@ run "private_defaults" {
   }
 
   assert {
-    condition     = aws_lb.this.idle_timeout == 120 && aws_lb_target_group.litellm.deregistration_delay == "120" && jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].stopTimeout == 120
-    error_message = "ALB idle timeout, target deregistration delay and ECS stopTimeout must all be 120 s."
+    condition     = aws_lb_target_group.litellm.deregistration_delay == "120" && jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].stopTimeout == 120
+    error_message = "Target deregistration delay and ECS stopTimeout (the drain window) must both be 120 s."
+  }
+
+  assert {
+    condition     = aws_lb.this.idle_timeout == 600
+    error_message = "The ALB idle timeout defaults to 600 s, above the router's 360 s worst case for one non-streaming request."
+  }
+
+  assert {
+    condition = anytrue([
+      for e in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].environment :
+      e.name == "KEEPALIVE_TIMEOUT" && e.value == tostring(aws_lb.this.idle_timeout + 5)
+    ])
+    error_message = "uvicorn keep-alive (KEEPALIVE_TIMEOUT) must be the ALB idle timeout + 5 s."
+  }
+
+  assert {
+    condition     = aws_lb_listener.https[0].ssl_policy == "ELBSecurityPolicy-TLS13-1-2-Res-2021-06"
+    error_message = "The HTTPS listener uses the restricted TLS 1.3/1.2 policy."
+  }
+
+  assert {
+    condition     = jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].healthCheck.retries == 10 && jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].healthCheck.startPeriod == 60
+    error_message = "The container health check allows 10 misses after a 60 s start period."
+  }
+
+  assert {
+    condition = (
+      yamldecode(terraform_data.litellm_config.input.content).router_settings.timeout == 120 &&
+      yamldecode(terraform_data.litellm_config.input.content).router_settings.stream_timeout == 180 &&
+      yamldecode(terraform_data.litellm_config.input.content).router_settings.num_retries == 3 &&
+      yamldecode(terraform_data.litellm_config.input.content).router_settings.retry_after == 0 &&
+      yamldecode(terraform_data.litellm_config.input.content).router_settings.allowed_fails == 3 &&
+      yamldecode(terraform_data.litellm_config.input.content).router_settings.cooldown_time == 5 &&
+      yamldecode(terraform_data.litellm_config.input.content).router_settings.retry_policy == {
+        AuthenticationErrorRetries         = 0
+        BadRequestErrorRetries             = 0
+        ContentPolicyViolationErrorRetries = 0
+        RateLimitErrorRetries              = 3
+        TimeoutErrorRetries                = 2
+        InternalServerErrorRetries         = 1
+      }
+    )
+    error_message = "The router must set per-attempt timeouts, retries, cooldowns and the per-error retry policy."
+  }
+
+  assert {
+    condition = (
+      (1 + yamldecode(terraform_data.litellm_config.input.content).router_settings.retry_policy.TimeoutErrorRetries) *
+      yamldecode(terraform_data.litellm_config.input.content).router_settings.timeout < aws_lb.this.idle_timeout
+    )
+    error_message = "The router's worst case for one non-streaming request must fit inside the ALB idle timeout."
+  }
+
+  assert {
+    condition = (
+      yamldecode(terraform_data.litellm_config.input.content).litellm_settings.cache_params.ssl == true &&
+      yamldecode(terraform_data.litellm_config.input.content).router_settings.redis_ssl == true &&
+      yamldecode(terraform_data.litellm_config.input.content).general_settings.proxy_batch_write_at == 60
+    )
+    error_message = "Both Redis blocks set ssl explicitly, and spend is batch-written every 60 s."
   }
 
   assert {
@@ -144,8 +204,8 @@ run "private_defaults" {
   }
 
   assert {
-    condition     = jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].image == "ghcr.io/berriai/litellm:v1.106.6"
-    error_message = "The service must run the pinned official upstream image."
+    condition     = jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].image == "ghcr.io/berriai/litellm:v1.106.6@sha256:37e2dafb088a7723beb998590682957386dfc83ffea1848486f8e0e5cfac0b06"
+    error_message = "The service must run the official upstream image pinned by tag AND digest."
   }
 
   assert {
@@ -230,7 +290,7 @@ run "private_defaults" {
   }
 
   assert {
-    condition     = aws_appautoscaling_target.litellm.min_capacity == 2 && aws_appautoscaling_target.litellm.max_capacity == 4
+    condition     = aws_appautoscaling_target.litellm.min_capacity == 2 && aws_appautoscaling_target.litellm.max_capacity == 20
     error_message = "Auto scaling bounds must follow min/max_capacity."
   }
 
@@ -350,6 +410,13 @@ run "public_mode_wiring" {
   assert {
     condition     = toset([for f in aws_wafv2_web_acl_logging_configuration.this[0].redacted_fields : f.single_header[0].name]) == toset(["authorization", "x-litellm-api-key", "api-key", "cookie"])
     error_message = "WAF logs must redact the API-key headers and cookies."
+  }
+
+  assert {
+    condition = one([
+      for r in aws_wafv2_web_acl.this[0].rule : r.action[0].block[0].custom_response[0].response_code if r.name == "RateLimitPerIp"
+    ]) == 429 && one([for r in aws_wafv2_web_acl.this[0].rule : r.statement[0].rate_based_statement[0].limit if r.name == "RateLimitPerIp"]) == 2000
+    error_message = "The per-IP rate limit (2000 per 5 minutes) must answer 429 so SDKs back off."
   }
 
   assert {
@@ -1003,3 +1070,53 @@ run "short_migration_timeout_rejected" {
 
   expect_failures = [var.migration_timeout_seconds]
 }
+
+run "image_uri_override_still_replaces_the_pinned_image" {
+  command = apply
+
+  variables {
+    image_uri = "registry.example.com/litellm@sha256:0a4015cbc1a045639e0f757404d39d527fed57efbff9305239178867dea043bf"
+  }
+
+  assert {
+    condition     = jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].image == var.image_uri
+    error_message = "image_uri must replace the pinned upstream image."
+  }
+}
+
+run "keepalive_follows_the_idle_timeout" {
+  command = apply
+
+  variables {
+    alb_idle_timeout_seconds = 900
+  }
+
+  assert {
+    condition = aws_lb.this.idle_timeout == 900 && anytrue([
+      for e in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].environment :
+      e.name == "KEEPALIVE_TIMEOUT" && e.value == "905"
+    ])
+    error_message = "KEEPALIVE_TIMEOUT must be derived from alb_idle_timeout_seconds (+5 s)."
+  }
+}
+
+run "idle_timeout_above_alb_limit_rejected" {
+  command = plan
+
+  variables {
+    alb_idle_timeout_seconds = 4001
+  }
+
+  expect_failures = [var.alb_idle_timeout_seconds]
+}
+
+run "db_unavailable_override_warns" {
+  command = plan
+
+  variables {
+    config_override_file = "tests/fixtures/allow-db-unavailable.yaml"
+  }
+
+  expect_failures = [check.db_unavailable_requests_not_allowed]
+}
+

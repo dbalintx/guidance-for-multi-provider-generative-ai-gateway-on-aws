@@ -266,13 +266,16 @@ variable "min_capacity" {
 }
 
 variable "max_capacity" {
-  description = "Auto scaling maximum task count."
+  description = "Auto scaling maximum task count. Keep the foundation's max_gateway_instances (free-IP check) and the RDS connection alarm in step with it."
   type        = number
-  default     = 4
+  default     = 20
 }
 
+# Calibrate with a load test: LiteLLM runs a single worker process, which
+# saturates at about one vCPU, so on a 2-vCPU task the service CPU average may
+# never reach 75 % while latency already climbs.
 variable "cpu_target_utilization_percent" {
-  description = "Target-tracking CPU utilization for service auto scaling."
+  description = "Target-tracking CPU utilization for service auto scaling. Calibrate with a load test (single LiteLLM worker per task)."
   type        = number
   default     = 75
 }
@@ -410,6 +413,17 @@ variable "run_migrations_on_apply" {
   description = "Run the LiteLLM schema migration as a one-off ECS task, and gate the service rollout on its exit code (needs the AWS CLI where Terraform runs). Disable only when running the migration out of band."
   type        = bool
   default     = true
+}
+
+variable "alb_idle_timeout_seconds" {
+  description = "ALB idle timeout: how long the ALB waits for any byte on a connection. It must exceed the router's worst case for one non-streaming request ((1 + 2 timeout retries) x 120 s = 360 s) plus a buffer, or long completions get an ALB 504 instead of LiteLLM's own error. Independent of the 120 s drain settings."
+  type        = number
+  default     = 600
+
+  validation {
+    condition     = var.alb_idle_timeout_seconds >= 1 && var.alb_idle_timeout_seconds <= 4000
+    error_message = "alb_idle_timeout_seconds must be between 1 and 4000 (the ALB limit)."
+  }
 }
 
 variable "latency_p90_threshold_seconds" {

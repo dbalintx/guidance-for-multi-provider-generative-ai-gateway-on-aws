@@ -123,8 +123,14 @@ resource "aws_wafv2_web_acl" "this" {
     name     = "RateLimitPerIp"
     priority = 4
 
+    # 429, not 403: SDKs back off and retry on 429 but treat 403 as a permanent
+    # authorization failure.
     action {
-      block {}
+      block {
+        custom_response {
+          response_code = 429
+        }
+      }
     }
 
     statement {

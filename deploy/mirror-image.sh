@@ -90,7 +90,7 @@ done
 
 if [ -z "$VERSION" ]; then
   [ -f "$CONTAINER_TF" ] || usage_error "--version is required (terraform/app/container.tf not found)."
-  VERSION="$(sed -n 's|.*"ghcr\.io/berriai/litellm:\([^"]*\)".*|\1|p' "$CONTAINER_TF" | head -n 1)"
+  VERSION="$(sed -n 's|.*"ghcr\.io/berriai/litellm:\([^"@]*\)[@"].*|\1|p' "$CONTAINER_TF" | head -n 1)"
   [ -n "$VERSION" ] || usage_error "--version is required (no pinned tag found in terraform/app/container.tf)."
 fi
 [[ "$VERSION" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || usage_error "--version must be an image tag, e.g. v1.106.6."

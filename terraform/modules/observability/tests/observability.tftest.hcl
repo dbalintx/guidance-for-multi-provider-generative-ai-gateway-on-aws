@@ -377,3 +377,12 @@ run "non_positive_latency_threshold_rejected" {
 
   expect_failures = [var.latency_p90_threshold_seconds]
 }
+
+run "rds_connections_alarm_defaults_to_450" {
+  command = apply
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.simple["rds-connections-high"].threshold == 450
+    error_message = "The RDS connections alarm must default to 450 (20 tasks x ~10 connections x 2 during a deploy, below db.t4g.large's ~880)."
+  }
+}

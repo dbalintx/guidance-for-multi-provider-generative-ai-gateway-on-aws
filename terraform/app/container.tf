@@ -3,12 +3,15 @@
 # Do not scatter image, port, env, secrets or health-check settings elsewhere.
 locals {
   container = {
-    # Official upstream image at the pinned upstream release; update it
-    # deliberately, and re-check signal handling, the schema migration and the
-    # log format when moving to another minor line.
+    # Official upstream image at the pinned upstream release, pinned by the
+    # digest of its multi-architecture index so every task pulls exactly the
+    # reviewed image even if the tag is re-pushed; the tag is kept for
+    # readability. To upgrade, bump BOTH the tag and the digest, and re-check
+    # signal handling, the schema migration, the log format and the OIDC route
+    # list (alb.tf) when moving to another minor line.
     # image_uri overrides it for air-gapped deployments that mirrored the image
     # into a private registry (for example the account's ECR).
-    image = coalesce(var.image_uri, "ghcr.io/berriai/litellm:v1.106.6")
+    image = coalesce(var.image_uri, "ghcr.io/berriai/litellm:v1.106.6@sha256:37e2dafb088a7723beb998590682957386dfc83ffea1848486f8e0e5cfac0b06")
     port  = 4000
 
     # Plain environment values (secrets never go here). Service tasks must run
@@ -27,6 +30,9 @@ locals {
         REDIS_SSL                        = "True"
         DISABLE_SCHEMA_UPDATE            = "true"
         LITELLM_LOCAL_MODEL_COST_MAP     = "True" # no start-up fetch from raw.githubusercontent.com
+        # uvicorn keep-alive outlasts the ALB idle timeout, so the ALB never
+        # reuses a connection the task has just closed (sporadic 502s).
+        KEEPALIVE_TIMEOUT = tostring(var.alb_idle_timeout_seconds + 5)
       },
       var.extra_environment,
     )
@@ -49,8 +55,10 @@ locals {
     health_check_path    = "/health/liveliness"
     health_check_command = ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=5)\" || exit 1"]
 
-    # Aligned at 120 s (Fargate's maximum) with the ALB idle timeout and the
-    # target deregistration delay: in-flight streams get this long to finish.
+    # Drain window: 120 s (Fargate's maximum), aligned with the target
+    # deregistration delay, so in-flight requests get this long to finish on a
+    # deploy or scale-in. Unrelated to the ALB idle timeout (alb.tf), which
+    # bounds silence on a live connection.
     stop_timeout = 120
   }
 }

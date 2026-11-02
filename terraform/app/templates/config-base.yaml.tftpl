@@ -12,6 +12,11 @@ general_settings:
   # The ALB is the reverse proxy LiteLLM 1.106 expects to be told about:
   # attribute UI sign-in attempts to the client, not to the ALB.
   trusted_proxy_ranges: ${jsonencode(trusted_proxy_ranges)}
+  # Spend is written to the database in batches every 60 s (LiteLLM default
+  # 10 s): fewer, larger writes on the shared database. Trade-off: a task that
+  # stops without a graceful shutdown loses up to 60 s of spend records, and
+  # persisted spend (budgets across tasks) lags by up to a minute.
+  proxy_batch_write_at: 60
   # LiteLLM's fallback budget re-check reads the key and user spend counters,
   # which already include this request's own budget reservation, so a key close
   # to its budget is refused its fallback by its own hold. Re-evaluate on upgrade.
@@ -34,6 +39,7 @@ litellm_settings:
     host: os.environ/REDIS_HOST
     port: os.environ/REDIS_PORT
     password: os.environ/REDIS_PASSWORD
+    ssl: true # ElastiCache requires TLS; explicit, so the file works without REDIS_SSL
 
   # Request logs (metadata only, see above) to S3: the audit trail kept from the
   # original guidance.
@@ -52,3 +58,24 @@ router_settings:
   redis_host: os.environ/REDIS_HOST
   redis_port: os.environ/REDIS_PORT
   redis_password: os.environ/REDIS_PASSWORD
+  redis_ssl: true # ElastiCache requires TLS; explicit, so the file works without REDIS_SSL
+
+  # Per-attempt timeouts make retries and fallbacks possible at all (LiteLLM's
+  # own request timeout is 6000 s). Worst case for one non-streaming request:
+  # (1 + Timeout retries) x timeout = 3 x 120 s = 360 s, inside the ALB idle
+  # timeout (alb_idle_timeout_seconds, default 600). Streams send bytes, so the
+  # idle timer does not run during a stream.
+  timeout: 120
+  stream_timeout: 180
+  num_retries: 3
+  retry_after: 0
+  allowed_fails: 3
+  cooldown_time: 5
+  # No retries for errors a retry cannot fix; bounded retries otherwise.
+  retry_policy:
+    AuthenticationErrorRetries: 0
+    BadRequestErrorRetries: 0
+    ContentPolicyViolationErrorRetries: 0
+    RateLimitErrorRetries: 3
+    TimeoutErrorRetries: 2
+    InternalServerErrorRetries: 1

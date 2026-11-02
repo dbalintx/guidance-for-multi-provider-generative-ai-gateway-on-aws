@@ -188,10 +188,14 @@ variable "rds_free_storage_threshold_gib" {
   default     = 5
 }
 
+# 20 tasks x ~10 pooled connections each (LiteLLM's default pool) x 2 while a
+# rolling deploy runs old and new tasks = ~400, plus the migration task and
+# admin sessions: 450. db.t4g.large allows ~880 (RDS PostgreSQL default
+# max_connections for 8 GiB), so the alarm fires with headroom left.
 variable "rds_connections_threshold" {
-  description = "Alarm when RDS DatabaseConnections exceeds this value. Set to ~80% of max_connections for the instance class."
+  description = "Alarm when RDS DatabaseConnections exceeds this value. The default fits 20 tasks during a rolling deploy on db.t4g.large; scale it with max_capacity and the instance class."
   type        = number
-  default     = 100
+  default     = 450
 }
 
 variable "redis_engine_cpu_threshold_percent" {
