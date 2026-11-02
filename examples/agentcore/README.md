@@ -54,7 +54,8 @@ ARN) and does not modify the gateway's stacks.
 - A deployed gateway with a model registered in it (`model_id` below).
 - A machine that reaches the gateway (inside its network, or connected to its
   VPN) with Terraform >= 1.11, the AWS CLI v2, `python3` with `pip`, `zip`,
-  `curl` and `jq`; `boto3` for `scripts/invoke.py`.
+  `curl` and `jq`; `boto3` for `scripts/invoke.py`. The scripts take the region
+  from `AWS_REGION`.
 - AWS credentials for the gateway's account that may create the resources
   below, read the gateway's master key secret, and invoke AgentCore runtimes.
 - AgentCore Runtime available in the gateway's region, and the subnets in
@@ -109,7 +110,8 @@ python3 scripts/invoke.py "How many words are in 'the quick brown fox'? Use your
 }
 ```
 
-Callers need `bedrock-agentcore:InvokeAgentRuntime` and
+The region is `--region`, else `AWS_REGION`, else `AWS_DEFAULT_REGION`, else
+the region in the runtime ARN. Callers need `bedrock-agentcore:InvokeAgentRuntime` and
 `bedrock-agentcore:InvokeAgentRuntimeForUser` on the runtime. A SigV4 caller
 must pass a runtime user ID (`runtimeUserId`, `invoke.py --user-id`): AgentCore
 Runtime issues the invocation's workload access token for it, and without that
@@ -168,10 +170,11 @@ if it is not needed.
 Offline, no AWS access:
 
 ```bash
-# Agent: configuration, and full invocations against a local stand-in for the gateway
+# Agent (configuration, full invocations against a local stand-in for the
+# gateway) and scripts/invoke.py (region resolution, the client call)
 python3 -m venv .venv && .venv/bin/pip install -r agent/requirements-dev.txt
-.venv/bin/python -m pytest agent/tests
-(cd agent && ../.venv/bin/ruff check . && ../.venv/bin/ruff format --check .)
+.venv/bin/python -m pytest agent/tests scripts/tests
+for d in agent scripts; do (cd $d && ../.venv/bin/ruff check . && ../.venv/bin/ruff format --check .); done
 
 # Terraform: plans against a mocked AWS provider
 terraform -chdir=terraform init -backend=false
