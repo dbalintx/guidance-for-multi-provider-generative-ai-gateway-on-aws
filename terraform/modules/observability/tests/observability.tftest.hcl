@@ -345,3 +345,35 @@ run "too_many_redis_nodes_rejected" {
 
   expect_failures = [var.redis_num_cache_clusters]
 }
+
+run "latency_alarm_defaults_to_60_seconds_p90" {
+  command = apply
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.simple["alb-latency-p90"].threshold == 60 && aws_cloudwatch_metric_alarm.simple["alb-latency-p90"].extended_statistic == "p90"
+    error_message = "The p90 latency alarm must default to 60 s: LLM responses are measured to the last byte and routinely take tens of seconds."
+  }
+}
+
+run "latency_threshold_override" {
+  command = apply
+
+  variables {
+    latency_p90_threshold_seconds = 120
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.simple["alb-latency-p90"].threshold == 120
+    error_message = "latency_p90_threshold_seconds must set the alarm threshold."
+  }
+}
+
+run "non_positive_latency_threshold_rejected" {
+  command = plan
+
+  variables {
+    latency_p90_threshold_seconds = 0
+  }
+
+  expect_failures = [var.latency_p90_threshold_seconds]
+}

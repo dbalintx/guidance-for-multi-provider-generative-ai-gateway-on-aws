@@ -16,4 +16,6 @@ module "observability" {
   log_group_name             = aws_cloudwatch_log_group.litellm.name
   kms_key_arn                = var.kms_key_arn
   alarm_email                = var.alarm_email
+
+  latency_p90_threshold_seconds = var.latency_p90_threshold_seconds
 }

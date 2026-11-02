@@ -358,6 +358,12 @@ variable "run_migrations_on_apply" {
   default     = true
 }
 
+variable "latency_p90_threshold_seconds" {
+  description = "p90 ALB response-time alarm threshold in seconds. LLM responses are measured to the last byte and routinely take tens of seconds, so the default only catches stuck or saturated targets; the 5XX alarms are the primary failure signal."
+  type        = number
+  default     = 60
+}
+
 variable "alarm_email" {
   description = "Optional email address subscribed to the alarm topic (confirm the subscription from the email AWS sends)."
   type        = string

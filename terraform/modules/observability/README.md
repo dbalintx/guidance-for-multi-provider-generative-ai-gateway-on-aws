@@ -29,7 +29,7 @@ All alarm names are `<deployment_name>-<key>`. They notify the SNS topic on ALAR
 |---|---|---|
 | `alb-target-5xx-rate` | `100 * HTTPCode_Target_5XX_Count / RequestCount` (target group) | > 5 %, 2 of 3 periods, only with >= 10 requests per period |
 | `alb-elb-5xx` | `HTTPCode_ELB_5XX_Count` | > 10 per period, 2 of 3 |
-| `alb-latency-p90` | `TargetResponseTime` p90 | > 5 s, 2 of 3 |
+| `alb-latency-p90` | `TargetResponseTime` p90 | > 60 s, 2 of 3 |
 | `alb-unhealthy-hosts` | `UnHealthyHostCount` max | > 0, 2 of 3 |
 | `alb-no-healthy-hosts` | `HealthyHostCount` min | < 1, 2 of 2, missing data = breaching |
 | `ecs-running-below-desired` | Container Insights `DesiredTaskCount - RunningTaskCount` | > 0 for 5 periods, missing data = breaching |
@@ -48,14 +48,15 @@ How missing data is treated depends on the alarm. `notBreaching` when no data ju
 wrong (5XX, latency, evictions, log errors); `breaching` when the metric is always published while the service
 exists (healthy hosts, running tasks); `missing` for periodic resource metrics.
 
-Default thresholds: error rate > 5 % with 2 of 3 datapoints, and p90 latency > 5 s. There is no cost-per-request
+Default thresholds: error rate > 5 % with 2 of 3 datapoints, and p90 latency > 60 s. There is no cost-per-request
 alarm: cost is not an AWS metric, and LiteLLM does not log it (see below).
 
 ### Notes
 
 - **Latency and streaming.** For streamed responses the ALB's `TargetResponseTime` lasts until the last byte, so it
-  includes the whole generation time. The p90 alarm therefore tracks long completions, not only gateway slowness.
-  Raise `latency_p90_threshold_seconds` if most traffic is streamed.
+  includes the whole generation time, which for LLM calls is routinely tens of seconds. The 60 s default therefore
+  catches stuck or saturated targets rather than ordinary long completions; the 5XX alarms are the primary failure
+  signal. Tune `latency_p90_threshold_seconds` to your traffic.
 - **ElastiCache dimensions.** Node-based Redis metrics are published per `CacheClusterId` (and
   `CacheClusterId`+`CacheNodeId`), not per replication group. When cluster mode is disabled, the member clusters
   are `<replication_group_id>-001`, `-002`, and so on. The module derives these IDs from

@@ -149,10 +149,19 @@ variable "elb_5xx_threshold" {
   default     = 10
 }
 
+# LLM responses, streamed ones included, are measured by the ALB until the last
+# byte and routinely take tens of seconds, so a gateway-style threshold (a few
+# seconds) would keep this alarm red. 60 s catches stuck or saturated targets;
+# the 5XX alarms remain the primary failure signal.
 variable "latency_p90_threshold_seconds" {
-  description = "Alarm when p90 TargetResponseTime exceeds this many seconds. Streaming responses count until the last byte, so set this above your typical generation time."
+  description = "Alarm when p90 TargetResponseTime exceeds this many seconds. Streaming responses count until the last byte, so keep this above your typical generation time."
   type        = number
-  default     = 5
+  default     = 60
+
+  validation {
+    condition     = var.latency_p90_threshold_seconds > 0
+    error_message = "latency_p90_threshold_seconds must be greater than 0."
+  }
 }
 
 variable "ecs_cpu_threshold_percent" {
