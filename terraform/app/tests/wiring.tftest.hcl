@@ -90,8 +90,9 @@ variables {
     OPENAI_API_KEY = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/openai-AbCdEf:api_key::"
   }
 
-  # Never let a test apply run the local-exec migration helper.
+  # Never let a test apply run the local-exec helpers (they call the AWS CLI).
   run_migrations_on_apply = false
+  upload_config_on_apply  = false
 }
 
 run "private_defaults" {
@@ -199,7 +200,7 @@ run "private_defaults" {
   }
 
   assert {
-    condition     = strcontains(aws_iam_role_policy.task.policy, "arn:aws:s3:::${var.config_bucket_name}/config.yaml") && !strcontains(aws_iam_role_policy.task.policy, "s3:GetObject\",\"s3:PutObject")
+    condition     = strcontains(aws_iam_role_policy.task.policy, "arn:aws:s3:::${var.config_bucket_name}/config-*.yaml") && !strcontains(aws_iam_role_policy.task.policy, "s3:GetObject\",\"s3:PutObject")
     error_message = "Task role: read-only on the config object, write-only on the request logs."
   }
 
@@ -214,17 +215,17 @@ run "private_defaults" {
   }
 
   assert {
-    condition     = strcontains(aws_s3_object.litellm_config.content, "10.0.0.0/16") && strcontains(aws_s3_object.litellm_config.content, "trusted_proxy_ranges")
+    condition     = strcontains(terraform_data.litellm_config.input.content, "10.0.0.0/16") && strcontains(terraform_data.litellm_config.input.content, "trusted_proxy_ranges")
     error_message = "The rendered config must trust the ALB hop via trusted_proxy_ranges = [vpc_cidr]."
   }
 
   assert {
-    condition     = strcontains(aws_s3_object.litellm_config.content, "turn_off_message_logging")
+    condition     = strcontains(terraform_data.litellm_config.input.content, "turn_off_message_logging")
     error_message = "Message logging must be off."
   }
 
   assert {
-    condition     = { for e in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].environment : e.name => e.value }["LITELLM_CONFIG_SHA"] == sha256(aws_s3_object.litellm_config.content)
+    condition     = { for e in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].environment : e.name => e.value }["LITELLM_CONFIG_SHA"] == sha256(terraform_data.litellm_config.input.content)
     error_message = "The task definition must carry the config content hash, so a config change rolls tasks."
   }
 
@@ -253,7 +254,7 @@ run "rendered_config_has_no_models_by_default" {
   command = apply
 
   assert {
-    condition     = length(yamldecode(aws_s3_object.litellm_config.content).model_list) == 0
+    condition     = length(yamldecode(terraform_data.litellm_config.input.content).model_list) == 0
     error_message = "Without config_override_file the rendered config must carry no models (they are added in the LiteLLM UI)."
   }
 }
@@ -266,17 +267,17 @@ run "config_override_models_and_settings_merged" {
   }
 
   assert {
-    condition     = [for m in yamldecode(aws_s3_object.litellm_config.content).model_list : m.model_name] == ["override-model"]
+    condition     = [for m in yamldecode(terraform_data.litellm_config.input.content).model_list : m.model_name] == ["override-model"]
     error_message = "config_override_file model_list entries must be the rendered model list."
   }
 
   assert {
-    condition     = yamldecode(aws_s3_object.litellm_config.content).router_settings.num_retries == 7
+    condition     = yamldecode(terraform_data.litellm_config.input.content).router_settings.num_retries == 7
     error_message = "config_override_file *_settings keys must override the base config."
   }
 
   assert {
-    condition     = yamldecode(aws_s3_object.litellm_config.content).litellm_settings.turn_off_message_logging == true
+    condition     = yamldecode(terraform_data.litellm_config.input.content).litellm_settings.turn_off_message_logging == true
     error_message = "Base settings not named in the override must survive the merge."
   }
 }
@@ -383,8 +384,33 @@ run "oidc_applied_in_private_mode" {
   }
 
   assert {
-    condition     = length(aws_lb_listener_rule.ui_oidc) == 1
-    error_message = "An identity provider must put the OIDC action in front of the UI in private mode too."
+    condition     = length(aws_lb_listener_rule.ui_oidc) == 2
+    error_message = "An identity provider must put the OIDC action in front of the UI in private mode too (the route set spans two rules of at most five patterns)."
+  }
+
+  # The full set of UI and interactive sign-in routes of LiteLLM v1.106.6.
+  assert {
+    condition = toset(flatten([for r in aws_lb_listener_rule.ui_oidc : [for c in r.condition : tolist(tolist(c.path_pattern)[0].values)]])) == toset([
+      "/ui", "/ui/*", "/sso/*", "/login*", "/v2/login",
+      "/v3/login*", "/fallback/login", "/onboarding/*", "/.well-known/litellm-ui-config", "/litellm/.well-known/litellm-ui-config",
+    ])
+    error_message = "The OIDC rules must cover exactly the UI, SSO, all login versions, the fallback login, onboarding and the UI discovery routes."
+  }
+
+  assert {
+    condition     = alltrue([for r in aws_lb_listener_rule.ui_oidc : [for a in r.action : a.type][0] == "authenticate-oidc" && length([for c in r.condition : 1]) == 1 && length(tolist(tolist(r.condition)[0].path_pattern)[0].values) <= 5])
+    error_message = "Every OIDC rule must authenticate first and stay within the ALB's five-pattern limit."
+  }
+
+  assert {
+    condition = !anytrue([for p in flatten([for r in aws_lb_listener_rule.ui_oidc : [for c in r.condition : tolist(tolist(c.path_pattern)[0].values)]]) :
+    anytrue([for api in ["/v1", "/chat", "/key", "/health", "/model"] : startswith(p, api)])])
+    error_message = "API routes stay on LiteLLM key authentication; the OIDC rules must not cover them."
+  }
+
+  assert {
+    condition     = length(aws_vpc_security_group_egress_rule.alb_to_idp) == 1 && aws_vpc_security_group_egress_rule.alb_to_idp[0].from_port == 443 && aws_vpc_security_group_egress_rule.alb_to_idp[0].to_port == 443 && aws_vpc_security_group_egress_rule.alb_to_idp[0].ip_protocol == "tcp"
+    error_message = "With an identity provider the ALB must be able to reach the IdP on tcp/443."
   }
 
   assert {
@@ -410,7 +436,7 @@ run "oidc_applied_in_public_mode" {
   }
 
   assert {
-    condition     = length(aws_lb_listener_rule.ui_oidc) == 1
+    condition     = length(aws_lb_listener_rule.ui_oidc) == 2
     error_message = "The OIDC action applies unconditionally in both modes."
   }
 }
@@ -721,7 +747,7 @@ run "response_cache_on_by_default" {
   command = apply
 
   assert {
-    condition     = yamldecode(aws_s3_object.litellm_config.content).litellm_settings.cache == true && yamldecode(aws_s3_object.litellm_config.content).litellm_settings.cache_params.type == "redis"
+    condition     = yamldecode(terraform_data.litellm_config.input.content).litellm_settings.cache == true && yamldecode(terraform_data.litellm_config.input.content).litellm_settings.cache_params.type == "redis"
     error_message = "The rendered config keeps LiteLLM's Redis response cache on by default."
   }
 }
@@ -734,7 +760,7 @@ run "response_cache_disabled_through_override" {
   }
 
   assert {
-    condition     = yamldecode(aws_s3_object.litellm_config.content).litellm_settings.cache == false && yamldecode(aws_s3_object.litellm_config.content).litellm_settings.turn_off_message_logging == true
+    condition     = yamldecode(terraform_data.litellm_config.input.content).litellm_settings.cache == false && yamldecode(terraform_data.litellm_config.input.content).litellm_settings.turn_off_message_logging == true
     error_message = "config_override_file must be able to switch the shared response cache off without dropping the other litellm_settings."
   }
 }
@@ -804,7 +830,176 @@ run "fallback_budget_recheck_disabled" {
   command = apply
 
   assert {
-    condition     = yamldecode(aws_s3_object.litellm_config.content).general_settings.enforce_fallback_budget == false
+    condition     = yamldecode(terraform_data.litellm_config.input.content).general_settings.enforce_fallback_budget == false
     error_message = "enforce_fallback_budget must be false: the re-check counts the request's own budget reservation."
   }
+}
+
+run "no_alb_egress_to_the_internet_without_identity_provider" {
+  command = apply
+
+  assert {
+    condition     = length(aws_vpc_security_group_egress_rule.alb_to_idp) == 0
+    error_message = "Without an identity provider the ALB has no internet egress."
+  }
+}
+
+run "identity_provider_without_outbound_access_warns" {
+  command = plan
+
+  variables {
+    disable_outbound_network_access = true
+    identity_provider = {
+      issuer                 = "https://login.example.com/tenant/v2.0"
+      authorization_endpoint = "https://login.example.com/tenant/oauth2/v2.0/authorize"
+      token_endpoint         = "https://login.example.com/tenant/oauth2/v2.0/token"
+      user_info_endpoint     = "https://graph.example.com/oidc/userinfo"
+      client_id              = "client"
+      client_secret_arn      = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/idp-AbCdEf"
+    }
+  }
+
+  expect_failures = [check.identity_provider_needs_outbound_access]
+}
+
+run "override_passes_unknown_top_level_keys_through" {
+  command = apply
+
+  variables {
+    config_override_file = "tests/fixtures/guardrails.yaml"
+  }
+
+  assert {
+    condition     = yamldecode(terraform_data.litellm_config.input.content).guardrails[0].guardrail_name == "bedrock-guard"
+    error_message = "Top-level override keys such as guardrails must reach the rendered config."
+  }
+
+  assert {
+    condition = (
+      yamldecode(terraform_data.litellm_config.input.content).general_settings.master_key_header_name == "x-api-key" &&
+      yamldecode(terraform_data.litellm_config.input.content).general_settings.enforce_fallback_budget == false &&
+      length(yamldecode(terraform_data.litellm_config.input.content).general_settings.trusted_proxy_ranges) == 1
+    )
+    error_message = "general_settings from the override must merge key-by-key over the base, not replace it."
+  }
+}
+
+run "config_object_is_content_addressed" {
+  command = apply
+
+  assert {
+    condition     = terraform_data.litellm_config.input.key == "config-${substr(sha256(terraform_data.litellm_config.input.content), 0, 16)}.yaml"
+    error_message = "The config object key must carry the content hash."
+  }
+
+  assert {
+    condition = anytrue([
+      for e in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].environment :
+      e.name == "LITELLM_CONFIG_BUCKET_OBJECT_KEY" && e.value == terraform_data.litellm_config.input.key
+    ])
+    error_message = "The task definition must name the content-addressed config key, so each revision loads its own config."
+  }
+
+  assert {
+    condition     = one([for st in jsondecode(aws_iam_role_policy.task.policy).Statement : st.Resource if st.Sid == "ReadConfig"]) == "arn:aws:s3:::${var.config_bucket_name}/config-*.yaml"
+    error_message = "The task role may read the config objects only."
+  }
+
+  assert {
+    condition     = length(terraform_data.upload_config) == 0
+    error_message = "Tests must never run the upload helper (upload_config_on_apply = false)."
+  }
+}
+
+run "alb_logs_use_the_log_delivery_service_principal" {
+  command = apply
+
+  assert {
+    condition = one([for st in jsondecode(aws_s3_bucket_policy.access_logs.policy).Statement : st if st.Sid == "AllowELBLogDelivery"]) == {
+      Sid       = "AllowELBLogDelivery"
+      Effect    = "Allow"
+      Principal = { Service = "logdelivery.elasticloadbalancing.amazonaws.com" }
+      Action    = "s3:PutObject"
+      Resource  = "${aws_s3_bucket.access_logs.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+      Condition = {
+        StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
+        ArnLike      = { "aws:SourceArn" = "arn:aws:elasticloadbalancing:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:loadbalancer/app/llmgw-alb/*" }
+      }
+    }
+    error_message = "ALB log delivery must use the service principal, scoped to this account's load balancer."
+  }
+}
+
+run "task_role_trust_is_scoped_to_this_account" {
+  command = apply
+
+  assert {
+    condition = alltrue([
+      for r in [aws_iam_role.task, aws_iam_role.execution] :
+      jsondecode(r.assume_role_policy).Statement[0].Condition.StringEquals["aws:SourceAccount"] == data.aws_caller_identity.current.account_id &&
+      jsondecode(r.assume_role_policy).Statement[0].Condition.ArnLike["aws:SourceArn"] == "arn:aws:ecs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:*"
+    ])
+    error_message = "Both ecs-tasks trust policies need the aws:SourceAccount and aws:SourceArn confused-deputy conditions."
+  }
+}
+
+run "reserved_name_in_extra_environment_rejected" {
+  command = plan
+
+  variables {
+    extra_environment = { DISABLE_SCHEMA_UPDATE = "false" }
+  }
+
+  expect_failures = [var.extra_environment]
+}
+
+run "debug_log_level_through_extra_environment_rejected" {
+  command = plan
+
+  variables {
+    extra_environment = { LITELLM_LOG = "DEBUG" }
+  }
+
+  expect_failures = [var.extra_environment]
+}
+
+run "reserved_prefix_in_extra_environment_rejected" {
+  command = plan
+
+  variables {
+    extra_environment = { REDIS_HOST = "elsewhere" }
+  }
+
+  expect_failures = [var.extra_environment]
+}
+
+run "reserved_name_in_provider_secret_arns_rejected" {
+  command = plan
+
+  variables {
+    provider_secret_arns = { LITELLM_MASTER_KEY = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:other-AbCdEf" }
+  }
+
+  expect_failures = [var.provider_secret_arns]
+}
+
+run "name_in_both_maps_rejected" {
+  command = plan
+
+  variables {
+    extra_environment    = { OPENAI_API_KEY = "plain" }
+    provider_secret_arns = { OPENAI_API_KEY = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/openai-AbCdEf" }
+  }
+
+  expect_failures = [var.provider_secret_arns]
+}
+
+run "short_migration_timeout_rejected" {
+  command = plan
+
+  variables {
+    migration_timeout_seconds = 30
+  }
+
+  expect_failures = [var.migration_timeout_seconds]
 }

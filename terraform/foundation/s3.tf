@@ -56,3 +56,29 @@ resource "aws_s3_bucket_policy" "config" {
     }]
   })
 }
+
+# The app writes one content-addressed config object per change and never
+# deletes earlier ones, so every task-definition revision can still load its
+# own config. Only noncurrent versions (overwritten or deleted objects) expire;
+# current objects never do, which would remove a live config.
+resource "aws_s3_bucket_lifecycle_configuration" "config" {
+  bucket = aws_s3_bucket.config.id
+
+  rule {
+    id     = "expire-noncurrent-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.config]
+}
+

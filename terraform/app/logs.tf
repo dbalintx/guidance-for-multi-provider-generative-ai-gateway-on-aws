@@ -86,8 +86,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
   }
 }
 
-data "aws_elb_service_account" "main" {}
-
+# ALB log delivery through the service principal, which every current region
+# supports (newer regions have no regional ELB account). Scoped to this
+# account's load balancers named after the deployment.
 resource "aws_s3_bucket_policy" "access_logs" {
   bucket = aws_s3_bucket.access_logs.id
 
@@ -108,9 +109,13 @@ resource "aws_s3_bucket_policy" "access_logs" {
       {
         Sid       = "AllowELBLogDelivery"
         Effect    = "Allow"
-        Principal = { AWS = data.aws_elb_service_account.main.arn }
+        Principal = { Service = "logdelivery.elasticloadbalancing.amazonaws.com" }
         Action    = "s3:PutObject"
-        Resource  = "${aws_s3_bucket.access_logs.arn}/*"
+        Resource  = "${aws_s3_bucket.access_logs.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
+          ArnLike      = { "aws:SourceArn" = "arn:aws:elasticloadbalancing:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:loadbalancer/app/${var.deployment_name}-alb/*" }
+        }
       },
     ]
   })

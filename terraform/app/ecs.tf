@@ -107,8 +107,14 @@ resource "terraform_data" "migrate" {
       SUBNETS         = join(",", var.private_subnet_ids)
       SECURITY_GROUPS = join(",", local.task_security_group_ids)
       AWS_REGION      = data.aws_region.current.region
+
+      MIGRATION_TIMEOUT_SECONDS = tostring(var.migration_timeout_seconds)
     }
   }
+
+  # The migration task needs its role policies (secrets, logs) and the config
+  # object; IAM is eventually consistent, so they must exist first.
+  depends_on = [aws_iam_role_policy.execution, aws_iam_role_policy.task, terraform_data.upload_config]
 }
 
 resource "aws_ecs_service" "litellm" {
@@ -145,9 +151,16 @@ resource "aws_ecs_service" "litellm" {
     ignore_changes = [desired_count]
   }
 
-  # The target group must be attached to a listener, and the schema migrated,
-  # before tasks roll.
-  depends_on = [aws_lb_listener.http, aws_lb_listener.https, terraform_data.migrate]
+  # The target group must be attached to a listener, the role policies and the
+  # config object must exist, and the schema must be migrated, before tasks roll.
+  depends_on = [
+    aws_lb_listener.http,
+    aws_lb_listener.https,
+    aws_iam_role_policy.execution,
+    aws_iam_role_policy.task,
+    terraform_data.upload_config,
+    terraform_data.migrate,
+  ]
 }
 
 resource "aws_appautoscaling_target" "litellm" {

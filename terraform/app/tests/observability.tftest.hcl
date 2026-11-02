@@ -78,8 +78,9 @@ variables {
   rds_instance_identifier        = "llmgw-litellm-db"
   redis_replication_group_id     = "llmgw-redis"
 
-  # Never let a test apply run the local-exec migration helper.
+  # Never let a test apply run the local-exec helpers (they call the AWS CLI).
   run_migrations_on_apply = false
+  upload_config_on_apply  = false
 }
 
 run "observability_wired_with_defaults" {

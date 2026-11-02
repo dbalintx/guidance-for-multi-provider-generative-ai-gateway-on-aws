@@ -1,14 +1,13 @@
 # The LiteLLM config.yaml, rendered by Terraform (no yq, no in-place edits).
 # Layer 2 of 3: tfvars (infrastructure) -> this file (base config, read from S3
 # at task start) -> LiteLLM's database (models, teams, keys, budgets — the UI).
-# Its content hash lands in the task definition (container.tf), so any config
-# change rolls the tasks.
+# The object key carries the content hash (config-<sha16>.yaml) and the task
+# definition names that key (container.tf), so a config change rolls the tasks
+# and every revision keeps loading the config it was deployed with.
 
 data "aws_region" "current" {}
 
 locals {
-  config_object_key = "config.yaml"
-
   override = yamldecode(var.config_override_file != null ? file(var.config_override_file) : "{}")
 
   base_config = yamldecode(templatefile("${path.module}/templates/config-base.yaml.tftpl", {
@@ -17,10 +16,12 @@ locals {
     region               = data.aws_region.current.region
   }))
 
-  # Customer override: model_list entries are appended; the *_settings maps are
-  # merged key-by-key over the base.
+  # Customer override: every top-level key passes through (guardrails,
+  # credential_list, mcp_servers, ...); model_list comes from the override and
+  # the *_settings maps are merged key-by-key over the base.
   litellm_config = merge(
     local.base_config,
+    local.override,
     {
       model_list       = try(local.override.model_list, [])
       general_settings = merge(local.base_config.general_settings, try(local.override.general_settings, {}))
@@ -31,13 +32,34 @@ locals {
 
   litellm_config_yaml = yamlencode(local.litellm_config)
   config_sha          = sha256(local.litellm_config_yaml)
+  config_object_key   = "config-${substr(local.config_sha, 0, 16)}.yaml"
 }
 
-resource "aws_s3_object" "litellm_config" {
-  bucket       = var.config_bucket_name
-  key          = local.config_object_key
-  content      = local.litellm_config_yaml
-  content_type = "application/yaml"
+# The rendered config, held in state so the plan shows its diff. It contains no
+# secrets: those reach the tasks as Secrets Manager ARNs.
+resource "terraform_data" "litellm_config" {
+  input = {
+    key     = local.config_object_key
+    content = local.litellm_config_yaml
+  }
+}
+
+# Uploads each new config once, to its own key, and never deletes earlier keys
+# (an aws_s3_object would delete the previous key on change and break
+# rollbacks). The foundation's bucket expires only noncurrent versions.
+resource "terraform_data" "upload_config" {
+  count            = var.upload_config_on_apply ? 1 : 0
+  triggers_replace = [var.config_bucket_name, local.config_object_key]
+
+  provisioner "local-exec" {
+    command = "${path.module}/../../deploy/put-config.sh"
+    environment = {
+      CONFIG_BUCKET  = var.config_bucket_name
+      CONFIG_KEY     = local.config_object_key
+      CONFIG_CONTENT = local.litellm_config_yaml
+      AWS_REGION     = data.aws_region.current.region
+    }
+  }
 }
 
 # Plan-time warnings (not errors): risky settings the plan should call out.
@@ -69,6 +91,13 @@ check "public_mode_without_identity_provider" {
       To proceed deliberately without it, apply this plan as is; this warning
       does not block the deployment and repeats on every plan.
     EOT
+  }
+}
+
+check "identity_provider_needs_outbound_access" {
+  assert {
+    condition     = !(var.identity_provider != null && var.disable_outbound_network_access)
+    error_message = "identity_provider is set but the network has no outbound internet access (disable_outbound_network_access): the ALB cannot reach the IdP's token and user-info endpoints, so every UI sign-in will fail. Provide a route to the IdP (NAT, or a private IdP endpoint) or remove identity_provider."
   }
 }
 

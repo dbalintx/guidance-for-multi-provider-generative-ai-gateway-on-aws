@@ -345,16 +345,65 @@ variable "cross_account_role_arns" {
   }
 }
 
+# Names the container settings (container.tf) set themselves, plus restart and
+# worker knobs that must stay at LiteLLM's defaults (single worker, no
+# request-count restarts). Overriding any of them through the free-form maps
+# would silently replace the stack's wiring.
+locals {
+  reserved_env_names    = ["LITELLM_LOG", "JSON_LOGS", "UI_USERNAME", "DISABLE_SCHEMA_UPDATE", "LITELLM_LOCAL_MODEL_COST_MAP", "MAX_REQUESTS_BEFORE_RESTART", "NUM_WORKERS", "KEEPALIVE_TIMEOUT", "DATABASE_URL", "LITELLM_MASTER_KEY", "LITELLM_SALT_KEY", "UI_PASSWORD", "LITELLM_LICENSE"]
+  reserved_env_prefixes = ["REDIS_", "LITELLM_CONFIG_"]
+}
+
 variable "provider_secret_arns" {
-  description = "Environment variable name => Secrets Manager ARN (optionally with the :json-key:: suffix) for non-Bedrock provider API keys. Values never pass through variables or state."
+  description = "Environment variable name => Secrets Manager ARN (optionally with the :json-key:: suffix) for non-Bedrock provider API keys. Values never pass through variables or state. Names the stack sets itself are rejected."
   type        = map(string)
   default     = {}
+
+  validation {
+    condition = alltrue([for k in keys(var.provider_secret_arns) :
+    !contains(local.reserved_env_names, k) && !anytrue([for p in local.reserved_env_prefixes : startswith(k, p)])])
+    error_message = "provider_secret_arns may not set a name the stack wires itself (${join(", ", local.reserved_env_names)}, or REDIS_* / LITELLM_CONFIG_*)."
+  }
+
+  validation {
+    condition     = length(setintersection(keys(var.provider_secret_arns), keys(var.extra_environment))) == 0
+    error_message = "A name may be a secret (provider_secret_arns) or a plain value (extra_environment), not both: ${join(", ", setintersection(keys(var.provider_secret_arns), keys(var.extra_environment)))}."
+  }
 }
 
 variable "extra_environment" {
-  description = "Additional non-secret environment variables for LiteLLM (for example SSO client IDs, PROXY_BASE_URL, HTTPS_PROXY)."
+  description = "Additional non-secret environment variables for LiteLLM (for example SSO client IDs, PROXY_BASE_URL, HTTPS_PROXY). Names the stack sets itself are rejected; set the log level with log_level."
   type        = map(string)
   default     = {}
+
+  validation {
+    condition = alltrue([for k in keys(var.extra_environment) :
+    !contains(local.reserved_env_names, k) && !anytrue([for p in local.reserved_env_prefixes : startswith(k, p)])])
+    error_message = "extra_environment may not set a name the stack wires itself (${join(", ", local.reserved_env_names)}, or REDIS_* / LITELLM_CONFIG_*). Use log_level for LITELLM_LOG."
+  }
+}
+
+variable "migration_timeout_seconds" {
+  description = "How long the apply waits for the schema migration task before stopping it and failing (a cold image pull plus a large migration can exceed 10 minutes)."
+  type        = number
+  default     = 1200
+
+  validation {
+    condition     = var.migration_timeout_seconds >= 60
+    error_message = "migration_timeout_seconds must be at least 60."
+  }
+}
+
+variable "upload_config_on_apply" {
+  description = "Upload the rendered LiteLLM config to the config bucket during apply (needs the AWS CLI where Terraform runs). Disable only when the config is uploaded out of band."
+  type        = bool
+  default     = true
+}
+
+variable "disable_outbound_network_access" {
+  description = "The foundation's no-internet mode (the same shared tfvars value). The app uses it only to warn when an identity provider cannot be reached."
+  type        = bool
+  default     = false
 }
 
 variable "run_migrations_on_apply" {

@@ -493,3 +493,15 @@ run "max_gateway_instances_defaults_to_20" {
   }
 }
 
+
+run "config_bucket_expires_only_noncurrent_versions" {
+  command = plan
+
+  assert {
+    condition = (
+      aws_s3_bucket_lifecycle_configuration.config.rule[0].noncurrent_version_expiration[0].noncurrent_days == 90 &&
+      length(aws_s3_bucket_lifecycle_configuration.config.rule[0].expiration) == 0
+    )
+    error_message = "The config bucket may expire noncurrent versions only; expiring current objects would delete a live config."
+  }
+}

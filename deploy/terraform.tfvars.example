@@ -27,7 +27,7 @@ tags            = {}      # your own tags, merged into the defaults
 
 # --- foundation: network (leave vpc_id unset to create a VPC) ---
 # vpc_cidr                        = "10.0.0.0/16" # created VPC only; /24 or larger
-# disable_outbound_network_access = false         # no-internet mode: no IGW/NAT, VPC endpoints only (ghcr.io image pull needs egress — see notes)
+# disable_outbound_network_access = false         # no-internet mode: no IGW/NAT, VPC endpoints only (ghcr.io image pull needs egress — see notes); the app reads it to warn when an IdP is unreachable
 # egress_proxy_configured         = false         # only silences the no-egress warning
 # create_interface_endpoints      = false         # interface VPC endpoints despite egress (always on in no-internet mode; billed per hour and AZ)
 
@@ -93,6 +93,8 @@ tags            = {}      # your own tags, merged into the defaults
 # cpu_target_utilization_percent    = 75
 # memory_target_utilization_percent = 70
 # run_migrations_on_apply           = true # one-off migration task gates the service rollout
+# migration_timeout_seconds         = 1200 # the apply stops the migration task and fails after this
+# upload_config_on_apply            = true # upload the rendered config (config-<sha16>.yaml) during apply
 # image_uri                         = null # private copy of the image, e.g. from deploy/mirror-image.sh
 
 # --- app: LiteLLM config and environment ---

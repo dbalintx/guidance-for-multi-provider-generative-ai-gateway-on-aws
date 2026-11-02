@@ -10,12 +10,18 @@
 # actions anywhere.
 
 locals {
+  # Confused-deputy guard: ECS may assume these roles only for tasks in this
+  # account and region.
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
       Action    = "sts:AssumeRole"
       Principal = { Service = "ecs-tasks.amazonaws.com" }
+      Condition = {
+        StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
+        ArnLike      = { "aws:SourceArn" = "arn:aws:ecs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:*" }
+      }
     }]
   })
 
@@ -99,7 +105,7 @@ locals {
           Sid      = "ReadConfig"
           Effect   = "Allow"
           Action   = "s3:GetObject"
-          Resource = "arn:aws:s3:::${var.config_bucket_name}/${local.config_object_key}"
+          Resource = "arn:aws:s3:::${var.config_bucket_name}/config-*.yaml"
         },
         {
           Sid      = "WriteRequestLogs"

@@ -89,13 +89,28 @@ resource "aws_lb_listener" "http" {
 }
 
 # Unconditional in both modes when an identity provider is set.
-# The OIDC action only works for browsers, so it covers the UI and sign-in paths.
+# The OIDC action only works for browsers, so it covers the UI and every
+# interactive sign-in route of the pinned LiteLLM release (enumerated from the
+# v1.106.6 proxy routes): the UI itself, LiteLLM's own SSO, the username/password
+# logins (v1, v2, v3 and the v3 code exchange), the fallback login, invitation
+# onboarding and the UI discovery document. API routes (including MCP OAuth for
+# programmatic clients) stay on LiteLLM key authentication. Re-check this list
+# when the image moves to another minor line.
+# An ALB rule takes at most five path patterns, so the set spans several rules.
 # It needs the HTTPS listener; identity_provider + allow_insecure_http is already
 # rejected by variable validation.
+locals {
+  ui_oidc_paths = [
+    "/ui", "/ui/*", "/sso/*", "/login*", "/v2/login",
+    "/v3/login*", "/fallback/login", "/onboarding/*", "/.well-known/litellm-ui-config", "/litellm/.well-known/litellm-ui-config",
+  ]
+  ui_oidc_path_groups = var.identity_provider != null ? chunklist(local.ui_oidc_paths, 5) : []
+}
+
 resource "aws_lb_listener_rule" "ui_oidc" {
-  count        = var.identity_provider != null ? 1 : 0
+  count        = length(local.ui_oidc_path_groups)
   listener_arn = aws_lb_listener.https[0].arn
-  priority     = 10
+  priority     = 10 + count.index
 
   action {
     type = "authenticate-oidc"
@@ -118,7 +133,7 @@ resource "aws_lb_listener_rule" "ui_oidc" {
 
   condition {
     path_pattern {
-      values = ["/ui", "/ui/*", "/sso/*", "/login*"]
+      values = local.ui_oidc_path_groups[count.index]
     }
   }
 }

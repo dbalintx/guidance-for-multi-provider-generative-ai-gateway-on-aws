@@ -77,3 +77,17 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_tasks" {
   from_port                    = local.container.port
   to_port                      = local.container.port
 }
+
+# ALB OIDC: the load balancer itself calls the IdP's token and user-info
+# endpoints over HTTPS. Those are internet hosts whose addresses are not known
+# in advance, so egress is open on 443 only, and only when an IdP is set.
+resource "aws_vpc_security_group_egress_rule" "alb_to_idp" {
+  count             = var.identity_provider != null ? 1 : 0
+  security_group_id = aws_security_group.alb.id
+  description       = "ALB OIDC to the identity provider (token and user-info endpoints)"
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+}
+
