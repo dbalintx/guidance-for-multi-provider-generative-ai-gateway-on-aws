@@ -142,6 +142,17 @@ variable "destroy_data_without_snapshot" {
   default     = false
 }
 
+variable "generated_secrets_version" {
+  description = "Version of the generated secret values. Bump it to rotate the master key, UI password, Redis auth token and database password (the salt key never rotates); then redeploy the app so running tasks pick up the new values."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.generated_secrets_version >= 1 && floor(var.generated_secrets_version) == var.generated_secrets_version
+    error_message = "generated_secrets_version must be a whole number of at least 1."
+  }
+}
+
 variable "secret_recovery_window_days" {
   description = "Recovery window for deleted secrets. 0 deletes immediately (test deployments only)."
   type        = number

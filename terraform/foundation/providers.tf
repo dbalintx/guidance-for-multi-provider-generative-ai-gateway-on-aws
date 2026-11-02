@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.10" # cross-variable validation; S3 native state locking
+  required_version = ">= 1.11" # write-only arguments; cross-variable validation; S3 native state locking
 
   # Configured by deploy/deploy.sh (bucket, key, region, encrypt, use_lockfile).
   backend "s3" {}
@@ -11,7 +11,7 @@ terraform {
     }
     random = {
       source  = "hashicorp/random"
-      version = ">= 3.6, < 4.0"
+      version = ">= 3.7, < 4.0" # ephemeral random_password
     }
   }
 }

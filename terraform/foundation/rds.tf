@@ -11,7 +11,7 @@ locals {
   db_major_version = split(".", var.db_engine_version)[0]
 }
 
-resource "random_password" "db" {
+ephemeral "random_password" "db" {
   length  = 16
   special = false # keeps the DATABASE_URL free of characters that need URL-encoding
 }
@@ -74,7 +74,8 @@ resource "aws_db_instance" "database" {
 
   db_name                = local.db_name
   username               = local.db_username
-  password               = random_password.db.result
+  password_wo            = ephemeral.random_password.db.result
+  password_wo_version    = var.generated_secrets_version
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.db.id]
   parameter_group_name   = aws_db_parameter_group.postgres.name

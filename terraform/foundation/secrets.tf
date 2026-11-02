@@ -1,12 +1,17 @@
-# Generated secrets, in Secrets Manager only: values never appear in variables
-# or outputs. The generated values do live in this root
-# module's Terraform state — keep the state bucket encrypted and private
-# (deploy/deploy.sh creates it that way). Deleted secrets keep a recovery
-# window (7 days by default).
+# Generated secrets, in Secrets Manager only. Values never reach variables,
+# outputs, plan files or state: each one is an ephemeral random value written
+# through a write-only argument (secret_string_wo, password_wo, auth_token_wo),
+# so Terraform keeps only the *_wo_version number. Deleted secrets keep a
+# recovery window (7 days by default).
+#
+# Ephemeral values are regenerated on every run, but a write-only argument is
+# sent only when its resource is created or its version changes. Bumping
+# generated_secrets_version therefore rotates the master key, UI password,
+# Redis token and database password together; the salt key never rotates.
 
 # LiteLLM master key: the break-glass admin credential. The UI gets its own
 # password below so the master key is never used for routine sign-in.
-resource "random_password" "master_key" {
+ephemeral "random_password" "master_key" {
   length  = 21
   special = false
 }
@@ -18,14 +23,19 @@ resource "aws_secretsmanager_secret" "master_key" {
   kms_key_id              = var.kms_key_arn
 }
 
+# A plain sk-... string, not JSON: deploy/smoke-test.sh --key-secret-arn and
+# LiteLLM read the SecretString verbatim.
 resource "aws_secretsmanager_secret_version" "master_key" {
-  secret_id     = aws_secretsmanager_secret.master_key.id
-  secret_string = "sk-${random_password.master_key.result}"
+  secret_id                = aws_secretsmanager_secret.master_key.id
+  secret_string_wo         = "sk-${ephemeral.random_password.master_key.result}"
+  secret_string_wo_version = var.generated_secrets_version
 }
 
 # The salt key encrypts provider credentials stored in LiteLLM's database.
-# NEVER rotate it: rotation makes those stored credentials unreadable.
-resource "random_password" "salt_key" {
+# NEVER rotate it: rotation makes those stored credentials unreadable. Its
+# version is ignored after creation, so generated_secrets_version (or any later
+# edit) never re-sends a new value.
+ephemeral "random_password" "salt_key" {
   length  = 21
   special = false
 }
@@ -38,11 +48,22 @@ resource "aws_secretsmanager_secret" "salt_key" {
 }
 
 resource "aws_secretsmanager_secret_version" "salt_key" {
-  secret_id     = aws_secretsmanager_secret.salt_key.id
-  secret_string = "sk-${random_password.salt_key.result}"
+  secret_id                = aws_secretsmanager_secret.salt_key.id
+  secret_string_wo         = "sk-${ephemeral.random_password.salt_key.result}"
+  secret_string_wo_version = var.generated_secrets_version
+
+  lifecycle {
+    ignore_changes = [secret_string_wo, secret_string_wo_version]
+  }
 }
 
-# Redis auth token (generated in redis.tf, consumed by LiteLLM's router).
+# Redis auth token: the same ephemeral value goes to ElastiCache (redis.tf) and
+# to this secret in one run.
+ephemeral "random_password" "redis_auth" {
+  length  = 32
+  special = false # ElastiCache auth tokens forbid '@', '"' and '/'
+}
+
 resource "aws_secretsmanager_secret" "redis_auth" {
   name_prefix             = "${var.deployment_name}-redis-auth-"
   description             = "ElastiCache Redis auth token"
@@ -51,13 +72,20 @@ resource "aws_secretsmanager_secret" "redis_auth" {
 }
 
 resource "aws_secretsmanager_secret_version" "redis_auth" {
-  secret_id     = aws_secretsmanager_secret.redis_auth.id
-  secret_string = random_password.redis_auth.result
+  secret_id                = aws_secretsmanager_secret.redis_auth.id
+  secret_string_wo         = ephemeral.random_password.redis_auth.result
+  secret_string_wo_version = var.generated_secrets_version
+
+  # A replaced replication group is created with this run's token; re-write
+  # the secret in the same run so the two never diverge.
+  lifecycle {
+    replace_triggered_by = [aws_elasticache_replication_group.redis.id]
+  }
 }
 
 # Without UI_PASSWORD, LiteLLM accepts the master key as the admin UI password.
 # A separate password keeps the master key break-glass only.
-resource "random_password" "ui_password" {
+ephemeral "random_password" "ui_password" {
   length  = 24
   special = false
 }
@@ -70,13 +98,14 @@ resource "aws_secretsmanager_secret" "ui_password" {
 }
 
 resource "aws_secretsmanager_secret_version" "ui_password" {
-  secret_id     = aws_secretsmanager_secret.ui_password.id
-  secret_string = random_password.ui_password.result
+  secret_id                = aws_secretsmanager_secret.ui_password.id
+  secret_string_wo         = ephemeral.random_password.ui_password.result
+  secret_string_wo_version = var.generated_secrets_version
 }
 
 # The full DATABASE_URL, so consumers need one secret, not credentials plus
-# endpoint assembly. The password is generated without special characters, so
-# no URL-encoding is needed.
+# endpoint assembly. The password (rds.tf) is generated without special
+# characters, so no URL-encoding is needed.
 resource "aws_secretsmanager_secret" "database_url" {
   name_prefix             = "${var.deployment_name}-database-url-"
   description             = "Full postgresql:// DATABASE_URL for LiteLLM"
@@ -85,6 +114,14 @@ resource "aws_secretsmanager_secret" "database_url" {
 }
 
 resource "aws_secretsmanager_secret_version" "database_url" {
-  secret_id     = aws_secretsmanager_secret.database_url.id
-  secret_string = "postgresql://${local.db_username}:${random_password.db.result}@${aws_db_instance.database.endpoint}/${local.db_name}"
+  secret_id                = aws_secretsmanager_secret.database_url.id
+  secret_string_wo         = "postgresql://${local.db_username}:${ephemeral.random_password.db.result}@${aws_db_instance.database.endpoint}/${local.db_name}"
+  secret_string_wo_version = var.generated_secrets_version
+
+  # A replaced database (new endpoint, created with this run's password) gets
+  # its URL re-written in the same run. Only replacement changes the id, so an
+  # in-place database update never re-sends a password RDS did not receive.
+  lifecycle {
+    replace_triggered_by = [aws_db_instance.database.id]
+  }
 }

@@ -19,11 +19,6 @@ resource "aws_elasticache_parameter_group" "redis" {
   }
 }
 
-resource "random_password" "redis_auth" {
-  length  = 32
-  special = false # ElastiCache auth tokens forbid '@', '"' and '/'
-}
-
 resource "aws_elasticache_replication_group" "redis" {
   replication_group_id = "${var.deployment_name}-redis"
   description          = "Gateway Redis for the LiteLLM router"
@@ -45,6 +40,7 @@ resource "aws_elasticache_replication_group" "redis" {
   kms_key_id                 = var.kms_key_arn
   transit_encryption_enabled = true
   transit_encryption_mode    = "required"
-  auth_token                 = random_password.redis_auth.result
+  auth_token_wo              = ephemeral.random_password.redis_auth.result
+  auth_token_wo_version      = var.generated_secrets_version
   auth_token_update_strategy = "SET"
 }

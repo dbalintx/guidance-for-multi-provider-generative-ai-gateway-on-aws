@@ -51,6 +51,7 @@ tags            = {}      # your own tags, merged into the defaults
 # redis_node_type             = "cache.t3.micro"
 # redis_num_cache_clusters    = 2 # Multi-AZ needs 2+
 # secret_recovery_window_days = 7 # 0 deletes immediately (test deployments only)
+# generated_secrets_version   = 1 # bump to rotate master key, UI password, Redis token, DB password (never the salt key); then redeploy the app
 # destroy_data_without_snapshot = false # throwaway deployments only: destroy the DB with no final snapshot and delete its backups
 
 # --- foundation: demo Client VPN (trials only; run deploy/setup-vpn.sh certs first) ---

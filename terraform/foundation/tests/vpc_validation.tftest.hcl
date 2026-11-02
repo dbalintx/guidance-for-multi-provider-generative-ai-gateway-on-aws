@@ -26,7 +26,9 @@ mock_provider "aws" {
   }
 }
 
-mock_provider "random" {}
+# The real random provider (local, no credentials): mock providers do not
+# support the ephemeral random_password values the secrets are built from.
+provider "random" {}
 
 variables {
   deployment_name                      = "llmgw"

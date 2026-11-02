@@ -13,7 +13,9 @@ mock_provider "aws" {
   }
 }
 
-mock_provider "random" {}
+# The real random provider (local, no credentials): mock providers do not
+# support the ephemeral random_password values the secrets are built from.
+provider "random" {}
 
 variables {
   deployment_name = "llmgw"
@@ -21,12 +23,6 @@ variables {
 
 # Generated values are normally unknown until apply; make them known at plan
 # time so the wiring assertions can read them.
-override_resource {
-  target          = random_password.redis_auth
-  override_during = plan
-  values          = { result = "mocked-redis-auth-token-32-chars" }
-}
-
 override_resource {
   target          = aws_s3_bucket.config
   override_during = plan
@@ -134,14 +130,16 @@ run "redis_is_tls_multi_az_with_auth" {
     error_message = "Redis must be encrypted at rest."
   }
 
+  # The token is write-only: set through auth_token_wo (never stored), in the
+  # same run as its secret.
   assert {
-    condition     = aws_elasticache_replication_group.redis.auth_token != null && aws_elasticache_replication_group.redis.auth_token != ""
-    error_message = "Redis must require an auth token."
+    condition     = aws_elasticache_replication_group.redis.auth_token == null && aws_elasticache_replication_group.redis.auth_token_wo_version == 1
+    error_message = "Redis must require an auth token, set write-only (auth_token_wo) so it never reaches state."
   }
 
   assert {
-    condition     = aws_elasticache_replication_group.redis.auth_token == random_password.redis_auth.result && aws_secretsmanager_secret_version.redis_auth.secret_string == random_password.redis_auth.result
-    error_message = "The Redis auth token and its secret must both carry the generated value."
+    condition     = aws_secretsmanager_secret_version.redis_auth.secret_string == null && aws_secretsmanager_secret_version.redis_auth.secret_string_wo_version == aws_elasticache_replication_group.redis.auth_token_wo_version
+    error_message = "The Redis auth token secret must be written write-only with the same version as the replication group's token."
   }
 }
 
@@ -366,25 +364,27 @@ run "resource_names_derive_from_deployment_name" {
   }
 }
 
-# deploy/smoke-test.sh --key-secret-arn reads SecretString as-is, so the master
-# key secret must hold the bare key, not a JSON document.
-run "master_key_secret_is_a_plain_string" {
+# Every generated value is ephemeral and written write-only: nothing secret is
+# in the plan or state, only the *_wo_version numbers.
+run "generated_secrets_never_reach_state" {
   command = plan
 
-  override_resource {
-    target          = random_password.master_key
-    override_during = plan
-    values          = { result = "mockedmasterkey123456" }
+  assert {
+    condition = alltrue([
+      for v in [
+        aws_secretsmanager_secret_version.master_key,
+        aws_secretsmanager_secret_version.salt_key,
+        aws_secretsmanager_secret_version.redis_auth,
+        aws_secretsmanager_secret_version.ui_password,
+        aws_secretsmanager_secret_version.database_url,
+      ] : v.secret_string == null && v.secret_binary == null && v.secret_string_wo_version == 1
+    ])
+    error_message = "Every generated secret must be written through secret_string_wo (version 1), with no value in state."
   }
 
   assert {
-    condition     = aws_secretsmanager_secret_version.master_key.secret_string == "sk-mockedmasterkey123456"
-    error_message = "The master key secret must be the plain sk-... key (smoke-test.sh --key-secret-arn uses SecretString verbatim)."
-  }
-
-  assert {
-    condition     = !can(jsondecode(aws_secretsmanager_secret_version.master_key.secret_string))
-    error_message = "The master key secret must not be JSON."
+    condition     = aws_db_instance.database.password == null && aws_db_instance.database.password_wo_version == 1 && aws_db_instance.database.manage_master_user_password != true
+    error_message = "The database password must be set write-only (password_wo) and never stored."
   }
 }
 
