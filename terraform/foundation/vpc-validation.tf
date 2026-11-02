@@ -96,8 +96,8 @@ resource "terraform_data" "vpc_validation" {
       error_message = "The private subnets have ${local.byo_free_ips} free IP addresses; this deployment needs about ${local.byo_ips_needed} (max gateway replicas x 2 for rolling deploys, the entry point, endpoints, RDS, Redis)."
     }
     precondition {
-      condition     = var.public_mode || local.byo_vpc_dns_ok
-      error_message = "Private mode needs DNS support and DNS hostnames enabled on the VPC (for private DNS on the VPC endpoints)."
+      condition     = local.byo_vpc_dns_ok
+      error_message = "The VPC needs DNS support and DNS hostnames enabled (private DNS on the VPC endpoints; the gateway, RDS and Redis sit in private subnets in both modes)."
     }
   }
 }
@@ -117,11 +117,22 @@ check "byo_vpc_egress" {
   }
 }
 
+locals {
+  # The scoped lookup below always runs (nested data blocks take no count) and
+  # a failed lookup surfaces as a warning. Only a bring-your-own VPC without
+  # stack-created interface endpoints needs an existing endpoint; otherwise the
+  # lookup targets an endpoint this configuration creates, which is unknown at
+  # plan time (read deferred) and present after apply, so it never warns.
+  byo_endpoint_lookup_needed = local.byo_vpc && !local.create_interface_endpoints
+  endpoint_lookup_created_id = local.create_interface_endpoints ? aws_vpc_endpoint.interface["secretsmanager"].id : try(aws_vpc_endpoint.s3_gateway[0].id, null)
+}
+
 check "byo_vpc_endpoints" {
   # Check-scoped data source: a missing endpoint becomes a warning, not an error.
   data "aws_vpc_endpoint" "required" {
-    vpc_id       = local.byo_vpc ? var.vpc_id : "vpc-unused"
-    service_name = "com.amazonaws.${data.aws_region.current.region}.secretsmanager"
+    id           = local.byo_endpoint_lookup_needed ? null : local.endpoint_lookup_created_id
+    vpc_id       = local.byo_endpoint_lookup_needed ? var.vpc_id : null
+    service_name = local.byo_endpoint_lookup_needed ? "com.amazonaws.${data.aws_region.current.region}.secretsmanager" : null
   }
 
   assert {

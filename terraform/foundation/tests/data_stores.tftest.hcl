@@ -72,8 +72,8 @@ run "rds_is_hardened_by_default" {
   }
 
   assert {
-    condition     = aws_db_instance.database.deletion_protection && !aws_db_instance.database.skip_final_snapshot && aws_db_instance.database.final_snapshot_identifier != null
-    error_message = "Deletion protection and a final snapshot must be on by default."
+    condition     = aws_db_instance.database.deletion_protection && !aws_db_instance.database.skip_final_snapshot && startswith(aws_db_instance.database.final_snapshot_identifier, "llmgw-litellm-db-final-") && !aws_db_instance.database.delete_automated_backups
+    error_message = "Deletion protection, a random-suffixed final snapshot and kept automated backups must be on by default."
   }
 
   assert {
@@ -268,8 +268,13 @@ run "protection_off_allows_teardown" {
   }
 
   assert {
-    condition     = !aws_db_instance.database.deletion_protection && aws_db_instance.database.skip_final_snapshot
+    condition     = !aws_db_instance.database.deletion_protection
     error_message = "deletion_protection = false must release the database."
+  }
+
+  assert {
+    condition     = !aws_db_instance.database.skip_final_snapshot && aws_db_instance.database.final_snapshot_identifier != null && !aws_db_instance.database.delete_automated_backups
+    error_message = "Releasing the database must still take a final snapshot and keep the automated backups."
   }
 
   assert {
@@ -452,3 +457,39 @@ run "non_cloudwatch_retention_rejected" {
 
   expect_failures = [var.log_retention_days]
 }
+
+run "throwaway_destroy_skips_snapshot_only_when_explicit" {
+  command = plan
+
+  variables {
+    deletion_protection           = false
+    destroy_data_without_snapshot = true
+  }
+
+  assert {
+    condition     = aws_db_instance.database.skip_final_snapshot && aws_db_instance.database.final_snapshot_identifier == null && aws_db_instance.database.delete_automated_backups
+    error_message = "Only destroy_data_without_snapshot may skip the final snapshot and delete the automated backups."
+  }
+}
+
+run "db_logs_never_carry_bind_parameters" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for n in ["log_parameter_max_length", "log_parameter_max_length_on_error"] :
+      anytrue([for p in aws_db_parameter_group.postgres.parameter : p.name == n && p.value == "0"])
+    ])
+    error_message = "Logged statements must not include bind-parameter values."
+  }
+}
+
+run "max_gateway_instances_defaults_to_20" {
+  command = plan
+
+  assert {
+    condition     = var.max_gateway_instances == 20
+    error_message = "max_gateway_instances must match the app's default max_capacity of 20."
+  }
+}
+

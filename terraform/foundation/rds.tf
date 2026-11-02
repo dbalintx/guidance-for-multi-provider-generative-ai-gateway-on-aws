@@ -1,5 +1,6 @@
 # RDS PostgreSQL: Multi-AZ, encrypted, deletion-protected by default, with a
-# final snapshot, 30-day backups and changes applied in the maintenance window.
+# final snapshot on every destroy (automated backups kept), 30-day backups and
+# changes applied in the maintenance window.
 # The database logs schema changes and slow queries only — never every
 # statement, which would send LiteLLM's spend logs, keys and team data to
 # CloudWatch.
@@ -32,6 +33,18 @@ resource "aws_db_parameter_group" "postgres" {
   parameter {
     name  = "log_min_duration_statement"
     value = "5000"
+  }
+
+  # Slow-query and error log lines would otherwise include bind-parameter
+  # values (user emails, key aliases, request metadata).
+  parameter {
+    name  = "log_parameter_max_length"
+    value = "0"
+  }
+
+  parameter {
+    name  = "log_parameter_max_length_on_error"
+    value = "0"
   }
 
   lifecycle {
@@ -67,9 +80,13 @@ resource "aws_db_instance" "database" {
   parameter_group_name   = aws_db_parameter_group.postgres.name
   multi_az               = true
 
+  # Turning deletion protection off only allows the destroy; the data is still
+  # kept in a final snapshot and the automated backups. Only the explicit
+  # destroy_data_without_snapshot (throwaway deployments) drops both.
   deletion_protection       = var.deletion_protection
-  skip_final_snapshot       = !var.deletion_protection
-  final_snapshot_identifier = var.deletion_protection ? "${var.deployment_name}-litellm-db-final-${random_id.final_snapshot.hex}" : null
+  skip_final_snapshot       = var.destroy_data_without_snapshot
+  final_snapshot_identifier = var.destroy_data_without_snapshot ? null : "${var.deployment_name}-litellm-db-final-${random_id.final_snapshot.hex}"
+  delete_automated_backups  = var.destroy_data_without_snapshot
   backup_retention_period   = var.db_backup_retention_days
   copy_tags_to_snapshot     = true
   apply_immediately         = false # changes wait for the maintenance window

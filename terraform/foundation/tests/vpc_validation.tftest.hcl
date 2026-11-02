@@ -275,3 +275,21 @@ run "byo_interface_endpoints_on_request" {
     error_message = "With create_interface_endpoints the bring-your-own VPC gets the 6 interface endpoints and the S3 gateway."
   }
 }
+
+# DNS is needed in both modes: tasks, endpoints, RDS and Redis are private.
+run "public_mode_also_needs_vpc_dns" {
+  command = plan
+
+  variables {
+    public_mode       = true
+    public_subnet_ids = ["subnet-pa", "subnet-pb"]
+  }
+
+  override_data {
+    target = data.aws_vpc.existing[0]
+    values = { id = "vpc-byo", cidr_block = "10.1.0.0/16", enable_dns_support = true, enable_dns_hostnames = false }
+  }
+
+  expect_failures = [terraform_data.vpc_validation]
+}
+

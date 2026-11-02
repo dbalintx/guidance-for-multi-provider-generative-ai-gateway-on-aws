@@ -94,7 +94,7 @@ variable "egress_proxy_configured" {
 variable "max_gateway_instances" {
   description = "Largest number of gateway replicas expected to run concurrently, used only to check free IP addresses in bring-your-own subnets (rolling deploys run up to twice this)."
   type        = number
-  default     = 4
+  default     = 20
 
   validation {
     condition     = var.max_gateway_instances >= 1
@@ -134,6 +134,12 @@ variable "deletion_protection" {
   description = "Protects the database from deletion and keeps buckets on destroy. Set to false and apply before undeploying."
   type        = bool
   default     = true
+}
+
+variable "destroy_data_without_snapshot" {
+  description = "Throwaway deployments only: on destroy, delete the database WITHOUT a final snapshot and delete its automated backups. Default false: every destroy leaves a final snapshot and keeps the automated backups."
+  type        = bool
+  default     = false
 }
 
 variable "secret_recovery_window_days" {
