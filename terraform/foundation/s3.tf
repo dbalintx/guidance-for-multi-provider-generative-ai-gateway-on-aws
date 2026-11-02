@@ -1,6 +1,7 @@
 # Config bucket: versioned (a bad config can be rolled back), private, TLS-only,
-# kept on destroy while deletion protection is on. The app root module renders
-# config.yaml and uploads it here — the foundation only provides the bucket.
+# kept on destroy while deletion protection is on. The app root module renders the LiteLLM
+# config (one content-addressed config-<sha16>.yaml per change) and uploads it
+# here — the foundation only provides the bucket.
 
 resource "aws_s3_bucket" "config" {
   bucket_prefix = "${var.deployment_name}-config-"

@@ -1120,3 +1120,13 @@ run "db_unavailable_override_warns" {
   expect_failures = [check.db_unavailable_requests_not_allowed]
 }
 
+
+run "request_count_restarts_rejected" {
+  command = plan
+
+  variables {
+    extra_environment = { MAX_REQUESTS_BEFORE_RESTART = "50000" }
+  }
+
+  expect_failures = [var.extra_environment]
+}
