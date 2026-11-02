@@ -17,6 +17,10 @@ terraform {
 }
 
 locals {
+  # Every log the foundation keeps (VPC flow logs, VPN connection logs) is
+  # retained for ten years, CloudWatch's 3653-day value.
+  log_retention_days = 3653
+
   common_tags = merge(var.tags, {
     Project            = "llmgateway"
     GithubRepo         = "https://github.com/aws-solutions-library-samples/guidance-for-multi-provider-generative-ai-gateway-on-aws"

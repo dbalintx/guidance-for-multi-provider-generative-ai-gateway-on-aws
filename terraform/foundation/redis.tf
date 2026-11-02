@@ -1,6 +1,14 @@
 # ElastiCache Redis for LiteLLM's router: Multi-AZ with automatic failover,
 # TLS required in transit, encrypted at rest, auth token required.
 
+locals {
+  # A primary and one replica in a second AZ: the minimum for Multi-AZ with
+  # automatic failover. The router keeps only small rate-limit and cooldown
+  # state here (plus the response cache).
+  redis_node_type          = "cache.t3.micro"
+  redis_num_cache_clusters = 2
+}
+
 resource "aws_elasticache_subnet_group" "redis" {
   name        = "${var.deployment_name}-redis-subnet-group"
   description = "Subnet group for the gateway Redis cluster"
@@ -25,10 +33,10 @@ resource "aws_elasticache_replication_group" "redis" {
 
   engine         = "redis"
   engine_version = "7.1"
-  node_type      = var.redis_node_type
+  node_type      = local.redis_node_type
   port           = local.redis_port
 
-  num_cache_clusters         = var.redis_num_cache_clusters
+  num_cache_clusters         = local.redis_num_cache_clusters
   multi_az_enabled           = true
   automatic_failover_enabled = true
 

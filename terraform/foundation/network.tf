@@ -127,7 +127,7 @@ resource "aws_route_table_association" "private" {
 resource "aws_cloudwatch_log_group" "vpc_flow_logs" {
   count             = local.creating_new_vpc ? 1 : 0
   name              = "/aws/vpc/${var.deployment_name}-flow-logs"
-  retention_in_days = var.log_retention_days
+  retention_in_days = local.log_retention_days
   kms_key_id        = var.kms_key_arn
 }
 

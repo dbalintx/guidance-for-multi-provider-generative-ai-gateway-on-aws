@@ -391,17 +391,13 @@ run "generated_secrets_never_reach_state" {
 run "monitoring_identifiers_exported" {
   command = plan
 
-  variables {
-    redis_num_cache_clusters = 3
-  }
-
   assert {
     condition     = output.rds_instance_identifier == "llmgw-litellm-db" && output.rds_instance_identifier == aws_db_instance.database.identifier
     error_message = "rds_instance_identifier must be the RDS instance identifier (app alarms use it as DBInstanceIdentifier)."
   }
 
   assert {
-    condition     = output.redis_replication_group_id == "llmgw-redis" && output.redis_num_cache_clusters == 3
+    condition     = output.redis_replication_group_id == "llmgw-redis" && output.redis_num_cache_clusters == 2 && aws_elasticache_replication_group.redis.num_cache_clusters == 2 && aws_elasticache_replication_group.redis.node_type == "cache.t3.micro"
     error_message = "The Redis replication group ID and node count must be exported for the app's per-node alarms."
   }
 }
@@ -428,17 +424,6 @@ run "rds_storage_autoscaling_by_default" {
   }
 }
 
-run "rds_max_storage_not_above_allocated_rejected" {
-  command = plan
-
-  variables {
-    rds_allocated_storage     = 100
-    rds_max_allocated_storage = 100
-  }
-
-  expect_failures = [var.rds_max_allocated_storage]
-}
-
 run "rds_default_instance_class_is_the_baseline" {
   command = plan
 
@@ -446,16 +431,6 @@ run "rds_default_instance_class_is_the_baseline" {
     condition     = aws_db_instance.database.instance_class == "db.t4g.large"
     error_message = "db.t4g.large is the supported baseline instance class."
   }
-}
-
-run "non_cloudwatch_retention_rejected" {
-  command = plan
-
-  variables {
-    log_retention_days = 3650
-  }
-
-  expect_failures = [var.log_retention_days]
 }
 
 run "throwaway_destroy_skips_snapshot_only_when_explicit" {
@@ -483,16 +458,6 @@ run "db_logs_never_carry_bind_parameters" {
     error_message = "Logged statements must not include bind-parameter values."
   }
 }
-
-run "max_gateway_instances_defaults_to_20" {
-  command = plan
-
-  assert {
-    condition     = var.max_gateway_instances == 20
-    error_message = "max_gateway_instances must match the app's default max_capacity of 20."
-  }
-}
-
 
 run "config_bucket_expires_only_noncurrent_versions" {
   command = plan

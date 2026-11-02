@@ -2,12 +2,18 @@
 # outputs, plan files or state: each one is an ephemeral random value written
 # through a write-only argument (secret_string_wo, password_wo, auth_token_wo),
 # so Terraform keeps only the *_wo_version number. Deleted secrets keep a
-# recovery window (7 days by default).
+# 7-day recovery window; every secret is named with a unique name_prefix, so a
+# destroy and redeploy of the same deployment_name inside that window never
+# collides with a secret pending deletion.
 #
 # Ephemeral values are regenerated on every run, but a write-only argument is
 # sent only when its resource is created or its version changes. Bumping
 # generated_secrets_version therefore rotates the master key, UI password,
 # Redis token and database password together; the salt key never rotates.
+
+locals {
+  secret_recovery_window_days = 7
+}
 
 # LiteLLM master key: the break-glass admin credential. The UI gets its own
 # password below so the master key is never used for routine sign-in.
@@ -19,7 +25,7 @@ ephemeral "random_password" "master_key" {
 resource "aws_secretsmanager_secret" "master_key" {
   name_prefix             = "${var.deployment_name}-master-key-"
   description             = "LiteLLM master key (sk-...)"
-  recovery_window_in_days = var.secret_recovery_window_days
+  recovery_window_in_days = local.secret_recovery_window_days
   kms_key_id              = var.kms_key_arn
 }
 
@@ -43,7 +49,7 @@ ephemeral "random_password" "salt_key" {
 resource "aws_secretsmanager_secret" "salt_key" {
   name_prefix             = "${var.deployment_name}-salt-key-"
   description             = "LiteLLM salt key - never rotate it"
-  recovery_window_in_days = var.secret_recovery_window_days
+  recovery_window_in_days = local.secret_recovery_window_days
   kms_key_id              = var.kms_key_arn
 }
 
@@ -67,7 +73,7 @@ ephemeral "random_password" "redis_auth" {
 resource "aws_secretsmanager_secret" "redis_auth" {
   name_prefix             = "${var.deployment_name}-redis-auth-"
   description             = "ElastiCache Redis auth token"
-  recovery_window_in_days = var.secret_recovery_window_days
+  recovery_window_in_days = local.secret_recovery_window_days
   kms_key_id              = var.kms_key_arn
 }
 
@@ -93,7 +99,7 @@ ephemeral "random_password" "ui_password" {
 resource "aws_secretsmanager_secret" "ui_password" {
   name_prefix             = "${var.deployment_name}-ui-password-"
   description             = "LiteLLM admin UI password (separate from the master key)"
-  recovery_window_in_days = var.secret_recovery_window_days
+  recovery_window_in_days = local.secret_recovery_window_days
   kms_key_id              = var.kms_key_arn
 }
 
@@ -109,7 +115,7 @@ resource "aws_secretsmanager_secret_version" "ui_password" {
 resource "aws_secretsmanager_secret" "database_url" {
   name_prefix             = "${var.deployment_name}-database-url-"
   description             = "Full postgresql:// DATABASE_URL for LiteLLM"
-  recovery_window_in_days = var.secret_recovery_window_days
+  recovery_window_in_days = local.secret_recovery_window_days
   kms_key_id              = var.kms_key_arn
 }
 

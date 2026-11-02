@@ -1,6 +1,8 @@
 # Optional demo Client VPN (off by default): a way to reach a private gateway
 # for trials, not a production access path. Associated with ONE private subnet —
 # every association is billed hourly and one is enough to reach the whole VPC.
+# Clients may reach the VPC on 443 and 80, so an allow_insecure_http trial needs
+# no extra setting.
 # The app admits the VPN by security group (vpn_security_group_id output), so
 # nothing here knows about the ALB.
 
@@ -15,7 +17,7 @@ module "vpn" {
   server_certificate_arn      = var.vpn_server_certificate_arn
   client_root_certificate_arn = var.vpn_client_root_certificate_arn
   client_cidr                 = var.vpn_client_cidr
-  egress_ports                = var.vpn_egress_ports
-  log_retention_days          = var.log_retention_days
+  egress_ports                = [443, 80]
+  log_retention_days          = local.log_retention_days
   kms_key_arn                 = var.kms_key_arn
 }

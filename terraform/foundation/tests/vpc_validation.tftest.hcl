@@ -37,7 +37,6 @@ variables {
   public_subnet_ids                    = []
   public_mode                          = false
   create_vpc_endpoints_in_existing_vpc = true
-  max_gateway_instances                = 4
 }
 
 # Two private subnets in two AZs with a NAT route: valid.
@@ -124,10 +123,6 @@ run "private_subnet_routes_to_igw" {
 
 run "not_enough_free_ips" {
   command = plan
-
-  variables {
-    max_gateway_instances = 20
-  }
 
   override_data {
     target = data.aws_subnet.byo["subnet-a"]
@@ -293,5 +288,23 @@ run "public_mode_also_needs_vpc_dns" {
   }
 
   expect_failures = [terraform_data.vpc_validation]
+}
+
+# The free-IP check plans for 20 gateway replicas (x2 during a rolling deploy):
+# 2 x 30 free addresses (60) are short of the ~72 needed.
+run "free_ip_check_plans_for_twenty_replicas" {
+  command = plan
+
+  override_data {
+    target = data.aws_subnet.byo["subnet-a"]
+    values = { id = "subnet-a", vpc_id = "vpc-byo", availability_zone = "eu-west-1a", map_public_ip_on_launch = false, available_ip_address_count = 30 }
+  }
+
+  override_data {
+    target = data.aws_subnet.byo["subnet-b"]
+    values = { id = "subnet-b", vpc_id = "vpc-byo", availability_zone = "eu-west-1b", map_public_ip_on_launch = false, available_ip_address_count = 30 }
+  }
+
+  expect_failures = [terraform_data.vpc_validation, check.byo_vpc_ip_headroom]
 }
 

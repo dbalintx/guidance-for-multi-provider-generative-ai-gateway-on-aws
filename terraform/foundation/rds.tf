@@ -6,9 +6,23 @@
 # CloudWatch.
 
 locals {
-  db_username      = "llmproxy"
-  db_name          = "litellm"
-  db_major_version = split(".", var.db_engine_version)[0]
+  db_username = "llmproxy"
+  db_name     = "litellm"
+
+  # The supported baseline. A major version lets RDS pick the latest minor
+  # release; the parameter-group family follows it.
+  db_engine_version = "17"
+  db_major_version  = split(".", local.db_engine_version)[0]
+  # Graviton, 2 vCPU / 8 GiB: room for shared_buffers next to LiteLLM's
+  # ever-growing spend-log table, and ~880 connections by the PostgreSQL
+  # default formula, enough for 20 tasks during a rolling deploy.
+  db_instance_class = "db.t4g.large"
+  # gp3 gives its 3000 IOPS baseline below 400 GB; storage autoscaling grows
+  # the volume up to the ceiling because LiteLLM writes a spend-log row per
+  # request and keeps them indefinitely by default.
+  db_allocated_storage     = 20
+  db_max_allocated_storage = 200
+  db_backup_retention_days = 30
 }
 
 ephemeral "random_password" "db" {
@@ -61,14 +75,12 @@ resource "random_id" "final_snapshot" {
 resource "aws_db_instance" "database" {
   identifier     = "${var.deployment_name}-litellm-db"
   engine         = "postgres"
-  engine_version = var.db_engine_version
-  instance_class = var.rds_instance_class
+  engine_version = local.db_engine_version
+  instance_class = local.db_instance_class
 
-  storage_type      = "gp3"
-  allocated_storage = var.rds_allocated_storage
-  # Storage autoscaling: LiteLLM writes a spend-log row per request and keeps
-  # them indefinitely by default, so a fixed size eventually fills up.
-  max_allocated_storage = var.rds_max_allocated_storage
+  storage_type          = "gp3"
+  allocated_storage     = local.db_allocated_storage
+  max_allocated_storage = local.db_max_allocated_storage
   storage_encrypted     = true
   kms_key_id            = var.kms_key_arn
 
@@ -88,7 +100,7 @@ resource "aws_db_instance" "database" {
   skip_final_snapshot       = var.destroy_data_without_snapshot
   final_snapshot_identifier = var.destroy_data_without_snapshot ? null : "${var.deployment_name}-litellm-db-final-${random_id.final_snapshot.hex}"
   delete_automated_backups  = var.destroy_data_without_snapshot
-  backup_retention_period   = var.db_backup_retention_days
+  backup_retention_period   = local.db_backup_retention_days
   copy_tags_to_snapshot     = true
   apply_immediately         = false # changes wait for the maintenance window
 

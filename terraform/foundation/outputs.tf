@@ -93,7 +93,7 @@ output "redis_replication_group_id" {
 
 output "redis_num_cache_clusters" {
   description = "Number of Redis cache clusters (nodes) in the replication group."
-  value       = var.redis_num_cache_clusters
+  value       = local.redis_num_cache_clusters
 }
 
 output "vpn_security_group_id" {

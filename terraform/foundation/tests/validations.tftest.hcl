@@ -157,26 +157,6 @@ run "created_vpc_with_subnet_list_rejected" {
   expect_failures = [var.vpc_id]
 }
 
-run "single_redis_cluster_rejected" {
-  command = plan
-
-  variables {
-    redis_num_cache_clusters = 1
-  }
-
-  expect_failures = [var.redis_num_cache_clusters]
-}
-
-run "short_secret_recovery_window_rejected" {
-  command = plan
-
-  variables {
-    secret_recovery_window_days = 3
-  }
-
-  expect_failures = [var.secret_recovery_window_days]
-}
-
 run "tiny_vpc_cidr_rejected" {
   command = plan
 

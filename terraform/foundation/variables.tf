@@ -91,17 +91,6 @@ variable "egress_proxy_configured" {
   default     = false
 }
 
-variable "max_gateway_instances" {
-  description = "Largest number of gateway replicas expected to run concurrently, used only to check free IP addresses in bring-your-own subnets (rolling deploys run up to twice this)."
-  type        = number
-  default     = 20
-
-  validation {
-    condition     = var.max_gateway_instances >= 1
-    error_message = "max_gateway_instances must be at least 1."
-  }
-}
-
 variable "extra_data_ingress_security_group_ids" {
   description = "Extra security groups admitted to RDS and Redis, for any non-ECS client of the data stores (for example pods on an EKS cluster)."
   type        = list(string)
@@ -153,85 +142,6 @@ variable "generated_secrets_version" {
   }
 }
 
-variable "secret_recovery_window_days" {
-  description = "Recovery window for deleted secrets. 0 deletes immediately (test deployments only)."
-  type        = number
-  default     = 7
-
-  validation {
-    condition     = var.secret_recovery_window_days == 0 || (var.secret_recovery_window_days >= 7 && var.secret_recovery_window_days <= 30)
-    error_message = "secret_recovery_window_days must be 0 (immediate, tests only) or between 7 and 30."
-  }
-}
-
-variable "log_retention_days" {
-  description = "Retention of every log the stack keeps: here the VPC flow logs and the demo VPN connection logs; the app uses the same variable for its logs. 3653 days is CloudWatch's ten-year value."
-  type        = number
-  default     = 3653
-
-  validation {
-    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.log_retention_days)
-    error_message = "log_retention_days must be a CloudWatch Logs retention value (for example 365, 1827 or 3653 for ten years)."
-  }
-}
-
-variable "db_engine_version" {
-  description = "PostgreSQL engine version. A major version (for example \"17\") lets RDS pick the latest minor release."
-  type        = string
-  default     = "17"
-}
-
-variable "rds_instance_class" {
-  description = "Instance class for the RDS database. The default (Graviton, 2 vCPU, 8 GiB) is the supported baseline for every deployment; override only with a class RDS offers for the chosen PostgreSQL version."
-  type        = string
-  default     = "db.t4g.large"
-}
-
-variable "rds_allocated_storage" {
-  description = "Allocated storage in GB for the RDS database."
-  type        = number
-  default     = 20
-}
-
-variable "rds_max_allocated_storage" {
-  description = "Storage autoscaling ceiling in GB for the RDS database. RDS grows the volume up to this size when free space runs low."
-  type        = number
-  default     = 200
-
-  validation {
-    condition     = var.rds_max_allocated_storage > var.rds_allocated_storage
-    error_message = "rds_max_allocated_storage must be larger than rds_allocated_storage, or storage autoscaling cannot grow the volume."
-  }
-}
-
-variable "db_backup_retention_days" {
-  description = "RDS automated backup retention in days."
-  type        = number
-  default     = 30
-
-  validation {
-    condition     = var.db_backup_retention_days >= 1 && var.db_backup_retention_days <= 35
-    error_message = "db_backup_retention_days must be between 1 and 35."
-  }
-}
-
-variable "redis_node_type" {
-  description = "Node type for the Redis cache clusters."
-  type        = string
-  default     = "cache.t3.micro"
-}
-
-variable "redis_num_cache_clusters" {
-  description = "Number of Redis cache clusters (primary + replicas). Multi-AZ needs at least 2."
-  type        = number
-  default     = 2
-
-  validation {
-    condition     = var.redis_num_cache_clusters >= 2
-    error_message = "redis_num_cache_clusters must be at least 2: Multi-AZ with automatic failover needs a replica."
-  }
-}
-
 # --- Optional demo Client VPN (terraform/modules/vpn) ---
 
 variable "create_vpn" {
@@ -268,8 +178,3 @@ variable "vpn_client_cidr" {
   default     = "10.250.0.0/22"
 }
 
-variable "vpn_egress_ports" {
-  description = "TCP ports VPN clients may reach in the VPC. The default reaches the HTTPS listener; an allow_insecure_http trial needs [443, 80]."
-  type        = list(number)
-  default     = [443]
-}

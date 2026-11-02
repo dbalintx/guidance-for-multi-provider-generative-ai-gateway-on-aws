@@ -4,6 +4,10 @@
 # is — the IP arithmetic speaks of gateway replicas, not ECS tasks.
 
 locals {
+  # The largest number of gateway replicas the free-IP check plans for: the
+  # app's auto scaling maximum (20 tasks).
+  max_gateway_instances = 20
+
   byo_vpc            = !local.creating_new_vpc
   byo_subnet_ids     = local.byo_vpc ? toset(concat(var.private_subnet_ids, var.public_subnet_ids)) : toset([])
   required_endpoints = ["secretsmanager", "ecr.api", "ecr.dkr", "logs", "sts", "bedrock-runtime"]
@@ -62,7 +66,7 @@ locals {
   # Rolling deploys run up to 2x the gateway replicas; the entry point needs about
   # 8 free IPs per subnet; plus one endpoint ENI per service and subnet, RDS
   # (2 for Multi-AZ) and the Redis nodes.
-  byo_ips_needed = var.max_gateway_instances * 2 + 8 * local.byo_entry_subnets + length(local.required_endpoints) * length(var.private_subnet_ids) + 2 + var.redis_num_cache_clusters
+  byo_ips_needed = local.max_gateway_instances * 2 + 8 * local.byo_entry_subnets + length(local.required_endpoints) * length(var.private_subnet_ids) + 2 + local.redis_num_cache_clusters
   byo_has_egress = anytrue([for id in var.private_subnet_ids : try(local.byo_nat_default_route[id], false)])
   byo_vpc_dns_ok = !local.byo_vpc || (try(data.aws_vpc.existing[0].enable_dns_support, false) && try(data.aws_vpc.existing[0].enable_dns_hostnames, false))
 }
