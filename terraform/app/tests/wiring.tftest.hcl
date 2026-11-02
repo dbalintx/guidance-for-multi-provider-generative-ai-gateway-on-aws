@@ -1097,3 +1097,69 @@ run "request_count_restarts_rejected" {
 
   expect_failures = [var.extra_environment]
 }
+
+# Regions launched before August 2022 deliver ALB access logs from the region's
+# ELB account; later regions only through the log-delivery service principal.
+
+run "legacy_region_grants_the_region_elb_account" {
+  command = apply
+
+  override_data {
+    target = data.aws_region.current
+    values = { region = "ap-southeast-2" }
+  }
+
+  assert {
+    condition = one([for st in jsondecode(aws_s3_bucket_policy.access_logs.policy).Statement : st if st.Sid == "AllowLegacyRegionELBLogDelivery"]) == {
+      Sid       = "AllowLegacyRegionELBLogDelivery"
+      Effect    = "Allow"
+      Principal = { AWS = "arn:aws:iam::783225319266:root" }
+      Action    = "s3:PutObject"
+      Resource  = "${aws_s3_bucket.access_logs.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+    }
+    error_message = "In ap-southeast-2 the policy must also grant the region's ELB account (783225319266)."
+  }
+
+  assert {
+    condition     = one([for st in jsondecode(aws_s3_bucket_policy.access_logs.policy).Statement : st.Principal.Service if st.Sid == "AllowELBLogDelivery"]) == "logdelivery.elasticloadbalancing.amazonaws.com"
+    error_message = "The log-delivery service principal statement must be present in legacy regions too."
+  }
+}
+
+run "us_east_1_grants_its_elb_account" {
+  command = apply
+
+  override_data {
+    target = data.aws_region.current
+    values = { region = "us-east-1" }
+  }
+
+  assert {
+    condition     = one([for st in jsondecode(aws_s3_bucket_policy.access_logs.policy).Statement : st.Principal.AWS if st.Sid == "AllowLegacyRegionELBLogDelivery"]) == "arn:aws:iam::127311923021:root"
+    error_message = "In us-east-1 the policy must grant the region's ELB account (127311923021)."
+  }
+}
+
+run "post_2022_region_uses_the_service_principal_only" {
+  command = apply
+
+  override_data {
+    target = data.aws_region.current
+    values = { region = "eu-central-2" }
+  }
+
+  assert {
+    condition     = length([for st in jsondecode(aws_s3_bucket_policy.access_logs.policy).Statement : st if st.Sid == "AllowLegacyRegionELBLogDelivery"]) == 0
+    error_message = "eu-central-2 has no ELB account: the policy must not carry the legacy statement."
+  }
+
+  assert {
+    condition     = one([for st in jsondecode(aws_s3_bucket_policy.access_logs.policy).Statement : st.Principal.Service if st.Sid == "AllowELBLogDelivery"]) == "logdelivery.elasticloadbalancing.amazonaws.com"
+    error_message = "The log-delivery service principal statement must be present in post-2022 regions."
+  }
+
+  assert {
+    condition     = length(jsondecode(aws_s3_bucket_policy.access_logs.policy).Statement) == 2
+    error_message = "A post-2022 region's policy holds exactly the TLS-only deny and the service-principal grant."
+  }
+}

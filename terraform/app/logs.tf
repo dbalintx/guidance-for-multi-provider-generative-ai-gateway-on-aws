@@ -86,15 +86,48 @@ resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
   }
 }
 
-# ALB log delivery through the service principal, which every current region
-# supports (newer regions have no regional ELB account). Scoped to this
-# account's load balancers named after the deployment.
+locals {
+  # ALB access-log delivery principals. Regions launched after August 2022
+  # accept only the log-delivery service principal; regions launched before
+  # accept the per-region ELB account (aws partition; AWS publishes this list
+  # and adds no regions to it). The bucket policy grants the service principal
+  # always and the ELB account where the region has one.
+  legacy_elb_accounts = {
+    af-south-1     = "098369216593"
+    ap-east-1      = "754344448648"
+    ap-northeast-1 = "582318560864"
+    ap-northeast-2 = "600734575887"
+    ap-northeast-3 = "383597477331"
+    ap-south-1     = "718504428378"
+    ap-southeast-1 = "114774131450"
+    ap-southeast-2 = "783225319266"
+    ap-southeast-3 = "589379963580"
+    ca-central-1   = "985666609251"
+    eu-central-1   = "054676820928"
+    eu-north-1     = "897822967062"
+    eu-south-1     = "635631232127"
+    eu-west-1      = "156460612806"
+    eu-west-2      = "652711504416"
+    eu-west-3      = "009996457667"
+    me-south-1     = "076674570225"
+    sa-east-1      = "507241528517"
+    us-east-1      = "127311923021"
+    us-east-2      = "033677994240"
+    us-west-1      = "027434742980"
+    us-west-2      = "797873946194"
+  }
+  legacy_elb_account = lookup(local.legacy_elb_accounts, data.aws_region.current.region, null)
+}
+
+# TLS-only bucket; log delivery through the service principal (scoped to this
+# account's load balancer named after the deployment) and, in regions launched
+# before August 2022, the region's ELB account.
 resource "aws_s3_bucket_policy" "access_logs" {
   bucket = aws_s3_bucket.access_logs.id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
         Sid       = "EnforceSSLOnly"
         Effect    = "Deny"
@@ -116,8 +149,15 @@ resource "aws_s3_bucket_policy" "access_logs" {
           StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
           ArnLike      = { "aws:SourceArn" = "arn:aws:elasticloadbalancing:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:loadbalancer/app/${var.deployment_name}-alb/*" }
         }
-      },
-    ]
+      }],
+      local.legacy_elb_account == null ? [] : [{
+        Sid       = "AllowLegacyRegionELBLogDelivery"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${local.legacy_elb_account}:root" }
+        Action    = "s3:PutObject"
+        Resource  = "${aws_s3_bucket.access_logs.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+      }]
+    )
   })
 }
 
