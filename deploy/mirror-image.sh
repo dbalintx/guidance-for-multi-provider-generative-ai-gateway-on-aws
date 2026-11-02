@@ -39,6 +39,9 @@ Options:
                        configured region. Ignored with --registry.
   --dry-run            Pull and verify the upstream image only; push nothing
                        and make no AWS calls.
+  --skip-verify        Copy without verifying the upstream signature. Without
+                       this flag the script refuses to run when cosign is not
+                       installed.
   -h, --help           Show this help.
 
 With the default ECR target the script creates the repository if it is
@@ -48,14 +51,15 @@ ecr:GetAuthorizationToken, ecr:BatchCheckLayerAvailability,
 ecr:InitiateLayerUpload, ecr:UploadLayerPart, ecr:CompleteLayerUpload,
 ecr:PutImage, ecr:DescribeImages and sts:GetCallerIdentity.
 
-If cosign is installed, the upstream image signature is verified before
-anything is pushed; a failed verification stops the script.
+The upstream image signature is verified with cosign before anything is
+pushed; a failed verification stops the script. cosign is required unless
+--skip-verify is given.
 
 The printed URI is pinned by digest (repository@sha256:...), so the tasks run
 exactly the image that was verified and pushed.
 
-Requires: docker (with a running daemon); the AWS CLI for the ECR target;
-cosign is optional but recommended.
+Requires: docker (with a running daemon); cosign (unless --skip-verify); the
+AWS CLI for the ECR target.
 
 Exit codes: 0 success, 1 failure, 2 usage error.
 EOF
@@ -64,7 +68,7 @@ EOF
 die() { echo "Error: $*" >&2; exit 1; }
 usage_error() { echo "Error: $*" >&2; echo "Run '$0 --help' for usage." >&2; exit 2; }
 
-VERSION="" PLATFORM="linux/arm64" REGISTRY="" REPOSITORY="litellm" REGION="" DRY_RUN=false
+VERSION="" PLATFORM="linux/arm64" REGISTRY="" REPOSITORY="litellm" REGION="" DRY_RUN=false SKIP_VERIFY=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --version | --platform | --registry | --repository | --region)
@@ -78,6 +82,7 @@ while [ $# -gt 0 ]; do
       esac
       shift 2 ;;
     --dry-run) DRY_RUN=true; shift ;;
+    --skip-verify) SKIP_VERIFY=true; shift ;;
     -h | --help) usage; exit 0 ;;
     *) usage_error "unknown option: $1" ;;
   esac
@@ -93,6 +98,9 @@ fi
 [[ "$REPOSITORY" =~ ^[a-z0-9]+([._/-][a-z0-9]+)*$ ]] || usage_error "--repository must be a lowercase repository name."
 
 command -v docker >/dev/null 2>&1 || die "docker is required."
+if [ "$SKIP_VERIFY" != true ] && ! command -v cosign >/dev/null 2>&1; then
+  die "cosign is required to verify the upstream image signature (install it, or pass --skip-verify to copy unverified)."
+fi
 docker info >/dev/null 2>&1 || die "the Docker daemon is not running."
 
 SOURCE="${SOURCE_REPO}:${VERSION}"
@@ -103,12 +111,12 @@ SOURCE_DIGEST="$(docker image inspect --format '{{range .RepoDigests}}{{println 
 [ -n "$SOURCE_DIGEST" ] || die "could not read the upstream digest of ${SOURCE}."
 echo "Upstream digest: ${SOURCE_DIGEST}"
 
-if command -v cosign >/dev/null 2>&1; then
+if [ "$SKIP_VERIFY" = true ]; then
+  echo "--skip-verify: the upstream signature was NOT verified."
+else
   cosign verify --key "$COSIGN_KEY" "${SOURCE_REPO}@${SOURCE_DIGEST}" >/dev/null ||
     die "cosign could not verify the signature of ${SOURCE_REPO}@${SOURCE_DIGEST}; nothing was pushed."
   echo "Signature verified with cosign."
-else
-  echo "cosign not installed: the upstream signature was NOT verified."
 fi
 
 if [ "$DRY_RUN" = true ]; then

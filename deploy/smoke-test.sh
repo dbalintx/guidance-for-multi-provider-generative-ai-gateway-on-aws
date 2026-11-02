@@ -62,8 +62,13 @@ SELF_TEST=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --key-secret-arn) KEY_SECRET_ARN="${2:-}"; shift 2 ;;
-    --model) MODEL="${2:-}"; shift 2 ;;
+    --key-secret-arn | --model)
+      [[ $# -ge 2 && -n "$2" ]] || { usage >&2; die "$1 needs a value."; }
+      case "$1" in
+        --key-secret-arn) KEY_SECRET_ARN="$2" ;;
+        --model) MODEL="$2" ;;
+      esac
+      shift 2 ;;
     --insecure) INSECURE=true; shift ;;
     --self-test) SELF_TEST=true; shift ;;
     -h | --help) usage; exit 0 ;;

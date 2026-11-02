@@ -2,7 +2,7 @@
 # Optional demo Client VPN helper for terraform/modules/vpn.
 #
 #   deploy/setup-vpn.sh certs   --name <prefix> [--region <r>] [--dir <d>] [--force] [--generate-only | --dry-run]
-#   deploy/setup-vpn.sh profile --name <prefix> [--region <r>] [--dir <d>] [--install-ca]
+#   deploy/setup-vpn.sh profile --name <prefix> [--region <r>] [--dir <d>]
 #
 # certs:   creates a local CA, a server certificate and ONE shared client
 #          certificate with openssl, verifies the chains, imports the server
@@ -28,13 +28,15 @@ Optional demo Client VPN helper for terraform/modules/vpn.
 
 Usage:
   deploy/setup-vpn.sh certs   --name <prefix> [--region <r>] [--dir <d>] [--force] [--generate-only | --dry-run]
-  deploy/setup-vpn.sh profile --name <prefix> [--region <r>] [--dir <d>] [--install-ca]
+  deploy/setup-vpn.sh profile --name <prefix> [--region <r>] [--dir <d>]
 
 certs:   creates a local CA, a server certificate and ONE shared client
          certificate, verifies the chains, imports the server and client
          certificates into ACM and prints the tfvars lines.
 profile: after deploy, reads the endpoint ID from SSM, exports the Client VPN
-         configuration and writes a ready-to-import .ovpn profile.
+         configuration and writes a ready-to-import .ovpn profile. The profile
+         embeds the CA certificate, so the VPN client trusts the endpoint
+         without any change to the operating system's trust store.
 
 Options:
   --name <prefix>   Deployment name (the Terraform deployment_name). Required.
@@ -47,7 +49,6 @@ Options:
                     'certs' without this flag.
   --dry-run         certs: offline self-test — like --generate-only but in a
                     fresh temporary directory.
-  --install-ca      profile: also trust the CA in the OS trust store (needs sudo).
   -h, --help        Show this help.
 
 Demo/testing only. Production access should use Direct Connect or Transit Gateway.
@@ -81,7 +82,6 @@ DIR=""
 FORCE=false
 GENERATE_ONLY=false
 DRY_RUN=false
-INSTALL_CA=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -91,7 +91,6 @@ while [[ $# -gt 0 ]]; do
     --force) FORCE=true; shift ;;
     --generate-only) GENERATE_ONLY=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
-    --install-ca) INSTALL_CA=true; shift ;;
     -h | --help) usage; exit 0 ;;
     *) die "unknown option '$1'" ;;
   esac
@@ -231,30 +230,6 @@ EOF
 # ---------------------------------------------------------------------------
 # profile
 # ---------------------------------------------------------------------------
-install_ca() {
-  local ca="$DIR/ca.crt"
-  case "$(uname -s)" in
-    Darwin)
-      sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$ca"
-      echo "Installed CA into the macOS System keychain."
-      ;;
-    Linux)
-      if command -v update-ca-certificates >/dev/null 2>&1; then
-        sudo cp "$ca" "/usr/local/share/ca-certificates/${NAME}-vpn-ca.crt"
-        sudo update-ca-certificates
-      elif command -v update-ca-trust >/dev/null 2>&1; then
-        sudo cp "$ca" "/etc/pki/ca-trust/source/anchors/${NAME}-vpn-ca.crt"
-        sudo update-ca-trust extract
-      else
-        echo "Warning: no CA bundle tool found; install $ca manually." >&2
-        return
-      fi
-      echo "Installed CA into the Linux CA bundle."
-      ;;
-    *) echo "Warning: unsupported OS; install $ca manually." >&2 ;;
-  esac
-}
-
 detect_client() {
   case "$(uname -s)" in
     Darwin)
@@ -303,10 +278,6 @@ cmd_profile() {
   chmod 600 "$ovpn"
   trap - EXIT
   echo "Wrote $ovpn"
-
-  if [[ "$INSTALL_CA" == true ]]; then
-    install_ca
-  fi
 
   echo
   case "$(detect_client)" in

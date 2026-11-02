@@ -10,11 +10,13 @@
 # -json` — app never reads foundation state directly.
 #
 # State lives in a versioned, encrypted, private S3 bucket with native S3
-# locking. The bucket is created on first run (the fresh-account bootstrap
-# step, see docs/fresh-account-notes.md); override its name with
-# TF_STATE_BUCKET, the region with AWS_REGION.
+# locking, under <deployment_name>/foundation.tfstate and
+# <deployment_name>/app.tfstate. The bucket is created on first run (the
+# fresh-account bootstrap step, see docs/fresh-account-notes.md) and must be
+# owned by the deploying account; override its name with TF_STATE_BUCKET, the
+# region with AWS_REGION.
 #
-# Prerequisites: Terraform >= 1.10, the AWS CLI and jq.
+# Prerequisites: Terraform >= 1.11, the AWS CLI and jq.
 # Nothing secret is read from or printed by this script: secrets enter the
 # stack as Secrets Manager ARNs only.
 set -euo pipefail
@@ -39,14 +41,49 @@ for tool in terraform aws jq; do
 done
 [ -f "$TFVARS" ] || { echo "Missing ${TFVARS} (copy terraform.tfvars.example and edit it)" >&2; exit 1; }
 
+# deployment_name from the tfvars, parsed by Terraform itself (no regex over
+# HCL). It keys the state objects and the generated outputs file, so two
+# deployments in one account and region never share state.
+read_deployment_name() {
+  local tmp name
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/tfvars-name.XXXXXX")"
+  printf 'variable "deployment_name" {\n  type    = string\n  default = ""\n}\n' >"${tmp}/main.tf"
+  name="$(echo 'var.deployment_name' | terraform -chdir="$tmp" console -var-file="$TFVARS" 2>/dev/null |
+    sed -n 's/^"\([a-z][a-z0-9-]*\)"$/\1/p' | tail -n 1)" || true
+  rm -rf "$tmp"
+  [[ "$name" =~ ^[a-z][a-z0-9-]{0,19}$ ]] ||
+    { echo "deployment_name is missing or invalid in ${TFVARS}" >&2; exit 1; }
+  printf '%s\n' "$name"
+}
+DEPLOYMENT_NAME="$(read_deployment_name)"
+
 REGION="${AWS_REGION:-$(aws configure get region || true)}"
 [ -n "$REGION" ] || { echo "No region: set AWS_REGION or configure a default region" >&2; exit 1; }
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 TF_STATE_BUCKET="${TF_STATE_BUCKET:-litellm-gateway-tfstate-${ACCOUNT_ID}-${REGION}}"
 
-# State bucket: versioned, encrypted, private, with native S3 state locking
-# (use_lockfile). Creating it is the fresh-account bootstrap step.
-if ! aws s3api head-bucket --bucket "$TF_STATE_BUCKET" 2>/dev/null; then
+# Succeeds only when the bucket exists AND belongs to this account; a bucket of
+# the same name owned by another account is rejected, never written to.
+state_bucket_status() { # -> owned | missing | foreign
+  local err
+  if err="$(aws s3api head-bucket --bucket "$TF_STATE_BUCKET" --expected-bucket-owner "$ACCOUNT_ID" 2>&1 >/dev/null)"; then
+    echo owned
+  elif [[ "$err" == *"Not Found"* || "$err" == *"404"* ]]; then
+    echo missing
+  else
+    echo foreign
+  fi
+}
+
+# State bucket: versioned, encrypted, private, owner-enforced, TLS-only, with
+# native S3 state locking (use_lockfile). Creating it is the fresh-account
+# bootstrap step.
+case "$(state_bucket_status)" in
+  owned) echo "Using Terraform state bucket ${TF_STATE_BUCKET}" ;;
+  foreign)
+    echo "State bucket ${TF_STATE_BUCKET} exists but is not owned by account ${ACCOUNT_ID} (or is not accessible): refusing to use it." >&2
+    exit 1 ;;
+  missing)
   echo "Creating Terraform state bucket ${TF_STATE_BUCKET} in ${REGION}"
   if [ "$REGION" = "us-east-1" ]; then
     aws s3api create-bucket --bucket "$TF_STATE_BUCKET" --region "$REGION" >/dev/null
@@ -60,9 +97,18 @@ if ! aws s3api head-bucket --bucket "$TF_STATE_BUCKET" 2>/dev/null; then
     --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
   aws s3api put-public-access-block --bucket "$TF_STATE_BUCKET" \
     --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
-else
-  echo "Using Terraform state bucket ${TF_STATE_BUCKET}"
-fi
+  aws s3api put-bucket-ownership-controls --bucket "$TF_STATE_BUCKET" \
+    --ownership-controls 'Rules=[{ObjectOwnership=BucketOwnerEnforced}]'
+  aws s3api put-bucket-policy --bucket "$TF_STATE_BUCKET" --policy "$(jq -cn --arg b "$TF_STATE_BUCKET" '{
+    Version: "2012-10-17",
+    Statement: [{
+      Sid: "DenyInsecureTransport", Effect: "Deny", Principal: "*", Action: "s3:*",
+      Resource: ["arn:aws:s3:::\($b)", "arn:aws:s3:::\($b)/*"],
+      Condition: { Bool: { "aws:SecureTransport": "false" } }
+    }]
+  }')"
+  ;;
+esac
 
 init() { # dir state-key
   terraform -chdir="$1" init -input=false -reconfigure \
@@ -72,6 +118,12 @@ init() { # dir state-key
     -backend-config="encrypt=true" \
     -backend-config="use_lockfile=true" >/dev/null
 }
+
+# Plan files hold the planned values: removed on every exit path, including
+# a failed plan or apply.
+CURRENT_PLAN=""
+cleanup_plan() { [ -z "$CURRENT_PLAN" ] || rm -f "$CURRENT_PLAN"; }
+trap cleanup_plan EXIT
 
 plan_and_apply() { # label dir extra-var-file...
   local label="$1" dir="$2" plan_file
@@ -83,6 +135,7 @@ plan_and_apply() { # label dir extra-var-file...
   done
 
   plan_file="$(mktemp "${TMPDIR:-/tmp}/${label}.tfplan.XXXXXX")"
+  CURRENT_PLAN="$plan_file"
   echo ""
   echo "=== ${label}: plan ==="
   terraform -chdir="$dir" plan -input=false "${var_files[@]}" -out="$plan_file"
@@ -92,7 +145,6 @@ plan_and_apply() { # label dir extra-var-file...
     read -r -p "Apply the ${label} plan above? Only 'yes' applies: " answer
     if [ "$answer" != "yes" ]; then
       echo "Stopped: the ${label} plan was not applied." >&2
-      rm -f "$plan_file"
       exit 1
     fi
   fi
@@ -100,11 +152,13 @@ plan_and_apply() { # label dir extra-var-file...
   echo "=== ${label}: apply ==="
   terraform -chdir="$dir" apply -input=false "$plan_file"
   rm -f "$plan_file"
+  CURRENT_PLAN=""
 }
 
 export AWS_REGION="$REGION"
 
-init "$FOUNDATION_DIR" "foundation.tfstate"
+echo "Deployment ${DEPLOYMENT_NAME}: state under s3://${TF_STATE_BUCKET}/${DEPLOYMENT_NAME}/"
+init "$FOUNDATION_DIR" "${DEPLOYMENT_NAME}/foundation.tfstate"
 plan_and_apply "foundation" "$FOUNDATION_DIR"
 
 # Wire foundation outputs into app as plain input variables (names match 1:1).
@@ -114,7 +168,7 @@ plan_and_apply "foundation" "$FOUNDATION_DIR"
 # carry (vpc_id, subnets, vpc_cidr, kms_key_arn, ...) the foundation's actual
 # values win.
 mkdir -p "$GEN_DIR"
-FOUNDATION_OUTPUTS="${GEN_DIR}/foundation-outputs.tfvars.json"
+FOUNDATION_OUTPUTS="${GEN_DIR}/${DEPLOYMENT_NAME}-foundation-outputs.tfvars.json"
 terraform -chdir="$FOUNDATION_DIR" output -json \
   | jq 'with_entries(.value |= .value)' > "$FOUNDATION_OUTPUTS"
 
@@ -122,7 +176,7 @@ terraform -chdir="$FOUNDATION_DIR" output -json \
 # deploy/run-migration.sh (a one-off ECS task) and the service only rolls after
 # it exits 0 — LiteLLM reports healthy on an unmigrated database, so the rollout
 # must be gated on the migration's result, not on health checks.
-init "$APP_DIR" "app.tfstate"
+init "$APP_DIR" "${DEPLOYMENT_NAME}/app.tfstate"
 plan_and_apply "app" "$APP_DIR" "$FOUNDATION_OUTPUTS"
 
 echo ""
