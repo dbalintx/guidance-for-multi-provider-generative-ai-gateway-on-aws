@@ -1,6 +1,6 @@
 # Log sinks owned by the app: the LiteLLM CloudWatch log group, the ALB access-log
 # bucket and the LiteLLM request-log bucket (metadata only — message logging is
-# off in the rendered config). Ten-year retention by default (log_retention_days);
+# off in the rendered config). Ten-year retention (local.log_retention_days);
 # the buckets are kept on destroy while deletion_protection is on.
 
 data "aws_caller_identity" "current" {}
@@ -14,7 +14,7 @@ locals {
 
 resource "aws_cloudwatch_log_group" "litellm" {
   name              = "/ecs/${var.deployment_name}-litellm"
-  retention_in_days = var.log_retention_days
+  retention_in_days = local.log_retention_days
   kms_key_id        = var.kms_key_arn
 }
 
@@ -81,7 +81,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
     filter {}
 
     expiration {
-      days = var.log_retention_days
+      days = local.log_retention_days
     }
   }
 }
@@ -157,7 +157,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "request_logs" {
     filter {}
 
     expiration {
-      days = var.log_retention_days
+      days = local.log_retention_days
     }
   }
 }

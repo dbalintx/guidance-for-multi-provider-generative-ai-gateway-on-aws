@@ -17,5 +17,8 @@ module "observability" {
   kms_key_arn                = var.kms_key_arn
   alarm_email                = var.alarm_email
 
-  latency_p90_threshold_seconds = var.latency_p90_threshold_seconds
+  # LLM responses are measured to the last byte and routinely take tens of
+  # seconds: 60 s catches stuck or saturated targets; the 5XX alarms are the
+  # primary failure signal.
+  latency_p90_threshold_seconds = 60
 }

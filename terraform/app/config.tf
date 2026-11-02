@@ -36,29 +36,12 @@ locals {
 }
 
 # The rendered config, held in state so the plan shows its diff. It contains no
-# secrets: those reach the tasks as Secrets Manager ARNs.
+# secrets: those reach the tasks as Secrets Manager ARNs. module.rollout
+# (ecs.tf) uploads it to its own key and never deletes earlier keys.
 resource "terraform_data" "litellm_config" {
   input = {
     key     = local.config_object_key
     content = local.litellm_config_yaml
-  }
-}
-
-# Uploads each new config once, to its own key, and never deletes earlier keys
-# (an aws_s3_object would delete the previous key on change and break
-# rollbacks). The foundation's bucket expires only noncurrent versions.
-resource "terraform_data" "upload_config" {
-  count            = var.upload_config_on_apply ? 1 : 0
-  triggers_replace = [var.config_bucket_name, local.config_object_key]
-
-  provisioner "local-exec" {
-    command = "${path.module}/../../deploy/put-config.sh"
-    environment = {
-      CONFIG_BUCKET  = var.config_bucket_name
-      CONFIG_KEY     = local.config_object_key
-      CONFIG_CONTENT = local.litellm_config_yaml
-      AWS_REGION     = data.aws_region.current.region
-    }
   }
 }
 

@@ -54,14 +54,14 @@ resource "aws_ecs_task_definition" "litellm" {
   family                   = "${var.deployment_name}-litellm"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = var.vcpus * 1024
-  memory                   = var.vcpus * 1024 * 2
+  cpu                      = local.container.vcpus * 1024
+  memory                   = local.container.vcpus * 1024 * 2
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
 
   runtime_platform {
     operating_system_family = "LINUX"
-    cpu_architecture        = var.architecture == "x86" ? "X86_64" : "ARM64"
+    cpu_architecture        = local.container.cpu_architecture
   }
 
   container_definitions = jsonencode([local.litellm_container])
@@ -80,7 +80,7 @@ resource "aws_ecs_task_definition" "migrate" {
 
   runtime_platform {
     operating_system_family = "LINUX"
-    cpu_architecture        = var.architecture == "x86" ? "X86_64" : "ARM64"
+    cpu_architecture        = local.container.cpu_architecture
   }
 
   container_definitions = jsonencode([merge(
@@ -93,38 +93,31 @@ resource "aws_ecs_task_definition" "migrate" {
   )])
 }
 
-# Gate the rollout on the migration's exit code: LiteLLM's health endpoints
-# report healthy on an unmigrated database (verified on 1.82.3 and 1.106.0), so
-# neither the circuit breaker nor the ALB health check would catch a missed
-# migration. deploy/run-migration.sh starts the task and waits for exit 0; the
-# service (depends_on) only rolls after it.
-resource "terraform_data" "migrate" {
-  count            = var.run_migrations_on_apply ? 1 : 0
-  triggers_replace = [aws_ecs_task_definition.migrate.revision, local.container.image]
+# Config upload, then the schema migration gate (terraform/modules/rollout):
+# always run during apply, after the role policies exist (IAM is eventually
+# consistent and the migration task reads its secrets at start).
+module "rollout" {
+  source = "../modules/rollout"
 
-  provisioner "local-exec" {
-    command = "${path.module}/../../deploy/run-migration.sh"
-    environment = {
-      CLUSTER         = aws_ecs_cluster.this.name
-      TASK_DEFINITION = aws_ecs_task_definition.migrate.arn
-      SUBNETS         = join(",", var.private_subnet_ids)
-      SECURITY_GROUPS = join(",", local.task_security_group_ids)
-      AWS_REGION      = data.aws_region.current.region
+  config_bucket_name               = var.config_bucket_name
+  config_object_key                = local.config_object_key
+  config_content                   = local.litellm_config_yaml
+  region                           = data.aws_region.current.region
+  cluster_name                     = aws_ecs_cluster.this.name
+  migrate_task_definition_arn      = aws_ecs_task_definition.migrate.arn
+  migrate_task_definition_revision = aws_ecs_task_definition.migrate.revision
+  image                            = local.container.image
+  subnet_ids                       = var.private_subnet_ids
+  security_group_ids               = local.task_security_group_ids
 
-      MIGRATION_TIMEOUT_SECONDS = tostring(var.migration_timeout_seconds)
-    }
-  }
-
-  # The migration task needs its role policies (secrets, logs) and the config
-  # object; IAM is eventually consistent, so they must exist first.
-  depends_on = [aws_iam_role_policy.execution, aws_iam_role_policy.task, terraform_data.upload_config]
+  depends_on = [aws_iam_role_policy.execution, aws_iam_role_policy.task]
 }
 
 resource "aws_ecs_service" "litellm" {
   name                              = "${var.deployment_name}-litellm"
   cluster                           = aws_ecs_cluster.this.id
   task_definition                   = aws_ecs_task_definition.litellm.arn
-  desired_count                     = var.desired_capacity
+  desired_count                     = local.scaling.desired
   launch_type                       = "FARGATE"
   health_check_grace_period_seconds = 120
 
@@ -154,21 +147,39 @@ resource "aws_ecs_service" "litellm" {
     ignore_changes = [desired_count]
   }
 
-  # The target group must be attached to a listener, the role policies and the
-  # config object must exist, and the schema must be migrated, before tasks roll.
+  # The target group must be attached to a listener, the role policies must
+  # exist, and the config must be uploaded and the schema migrated (module
+  # rollout), before tasks roll.
   depends_on = [
     aws_lb_listener.http,
     aws_lb_listener.https,
     aws_iam_role_policy.execution,
     aws_iam_role_policy.task,
-    terraform_data.upload_config,
-    terraform_data.migrate,
+    module.rollout,
   ]
 }
 
+locals {
+  scaling = {
+    # Two tasks in two AZs at creation and as the floor; after creation auto
+    # scaling owns the count and redeploys never reset it.
+    desired = 2
+    min     = 2
+    # Up to 20 tasks. The foundation's free-IP check (max_gateway_instances)
+    # and the RDS connection alarm (20 x ~10 connections x 2 during a deploy)
+    # are sized for the same 20.
+    max = 20
+    # Calibrate with a load test: LiteLLM runs a single worker process, which
+    # saturates at about one vCPU, so on a 2-vCPU task the service CPU average
+    # may never reach 75 % while latency already climbs.
+    cpu_target_percent    = 75
+    memory_target_percent = 70
+  }
+}
+
 resource "aws_appautoscaling_target" "litellm" {
-  max_capacity       = var.max_capacity
-  min_capacity       = var.min_capacity
+  max_capacity       = local.scaling.max
+  min_capacity       = local.scaling.min
   resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.litellm.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
@@ -182,7 +193,7 @@ resource "aws_appautoscaling_policy" "cpu" {
   service_namespace  = aws_appautoscaling_target.litellm.service_namespace
 
   target_tracking_scaling_policy_configuration {
-    target_value = var.cpu_target_utilization_percent
+    target_value = local.scaling.cpu_target_percent
     predefined_metric_specification {
       predefined_metric_type = "ECSServiceAverageCPUUtilization"
     }
@@ -199,7 +210,7 @@ resource "aws_appautoscaling_policy" "memory" {
   service_namespace  = aws_appautoscaling_target.litellm.service_namespace
 
   target_tracking_scaling_policy_configuration {
-    target_value = var.memory_target_utilization_percent
+    target_value = local.scaling.memory_target_percent
     predefined_metric_specification {
       predefined_metric_type = "ECSServiceAverageMemoryUtilization"
     }

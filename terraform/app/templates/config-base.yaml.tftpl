@@ -63,7 +63,7 @@ router_settings:
   # Per-attempt timeouts make retries and fallbacks possible at all (LiteLLM's
   # own request timeout is 6000 s). Worst case for one non-streaming request:
   # (1 + Timeout retries) x timeout = 3 x 120 s = 360 s, inside the ALB idle
-  # timeout (alb_idle_timeout_seconds, default 600). Streams send bytes, so the
+  # timeout (600 s, alb.tf). Streams send bytes, so the
   # idle timer does not run during a stream.
   timeout: 120
   stream_timeout: 180

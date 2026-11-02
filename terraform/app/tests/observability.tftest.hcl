@@ -77,10 +77,13 @@ variables {
   ui_password_secret_arn         = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/ui-password-AbCdEf"
   rds_instance_identifier        = "llmgw-litellm-db"
   redis_replication_group_id     = "llmgw-redis"
+}
 
-  # Never let a test apply run the local-exec helpers (they call the AWS CLI).
-  run_migrations_on_apply = false
-  upload_config_on_apply  = false
+# The config upload and the migration gate (module.rollout) call the AWS CLI
+# from local-exec provisioners, which run even for an overridden resource.
+# Replacing the whole module keeps every test apply away from AWS.
+override_module {
+  target = module.rollout
 }
 
 run "observability_wired_with_defaults" {

@@ -11,6 +11,11 @@ locals {
     # list (alb.tf) when moving to another minor line.
     # image_uri overrides it for air-gapped deployments that mirrored the image
     # into a private registry (for example the account's ECR).
+    # Graviton tasks with 2 vCPU and 4 GiB (memory is 2 GiB per vCPU); the
+    # official image is multi-architecture.
+    cpu_architecture = "ARM64"
+    vcpus            = 2
+
     image = coalesce(var.image_uri, "ghcr.io/berriai/litellm:v1.106.6@sha256:37e2dafb088a7723beb998590682957386dfc83ffea1848486f8e0e5cfac0b06")
     port  = 4000
 
@@ -32,7 +37,7 @@ locals {
         LITELLM_LOCAL_MODEL_COST_MAP     = "True" # no start-up fetch from raw.githubusercontent.com
         # uvicorn keep-alive outlasts the ALB idle timeout, so the ALB never
         # reuses a connection the task has just closed (sporadic 502s).
-        KEEPALIVE_TIMEOUT = tostring(var.alb_idle_timeout_seconds + 5)
+        KEEPALIVE_TIMEOUT = tostring(local.alb_idle_timeout_seconds + 5)
       },
       var.extra_environment,
     )

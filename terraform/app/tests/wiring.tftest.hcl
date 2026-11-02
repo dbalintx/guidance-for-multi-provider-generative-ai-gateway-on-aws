@@ -89,10 +89,13 @@ variables {
   provider_secret_arns = {
     OPENAI_API_KEY = "arn:aws:secretsmanager:eu-west-1:111111111111:secret:llmgw/openai-AbCdEf:api_key::"
   }
+}
 
-  # Never let a test apply run the local-exec helpers (they call the AWS CLI).
-  run_migrations_on_apply = false
-  upload_config_on_apply  = false
+# The config upload and the migration gate (module.rollout) call the AWS CLI
+# from local-exec provisioners, which run even for an overridden resource.
+# Replacing the whole module keeps every test apply away from AWS.
+override_module {
+  target = module.rollout
 }
 
 run "private_defaults" {
@@ -115,7 +118,25 @@ run "private_defaults" {
 
   assert {
     condition     = aws_lb.this.idle_timeout == 600
-    error_message = "The ALB idle timeout defaults to 600 s, above the router's 360 s worst case for one non-streaming request."
+    error_message = "The ALB idle timeout is 600 s, above the router's 360 s worst case for one non-streaming request."
+  }
+
+  assert {
+    condition = (
+      aws_ecs_task_definition.litellm.cpu == "2048" && aws_ecs_task_definition.litellm.memory == "4096" &&
+      aws_ecs_task_definition.litellm.runtime_platform[0].cpu_architecture == "ARM64" &&
+      aws_ecs_task_definition.migrate.runtime_platform[0].cpu_architecture == "ARM64"
+    )
+    error_message = "Gateway tasks are Graviton (ARM64) with 2 vCPU and 4 GiB."
+  }
+
+  assert {
+    condition = (
+      aws_ecs_service.litellm.desired_count == 2 &&
+      aws_appautoscaling_policy.cpu.target_tracking_scaling_policy_configuration[0].target_value == 75 &&
+      aws_appautoscaling_policy.memory.target_tracking_scaling_policy_configuration[0].target_value == 70
+    )
+    error_message = "Two tasks at creation; target tracking at 75 % CPU and 70 % memory."
   }
 
   assert {
@@ -291,7 +312,7 @@ run "private_defaults" {
 
   assert {
     condition     = aws_appautoscaling_target.litellm.min_capacity == 2 && aws_appautoscaling_target.litellm.max_capacity == 20
-    error_message = "Auto scaling bounds must follow min/max_capacity."
+    error_message = "Auto scaling runs between 2 and 20 tasks."
   }
 
   assert {
@@ -809,7 +830,6 @@ run "public_without_identity_provider_warns" {
   expect_failures = [check.public_mode_without_identity_provider]
 }
 
-
 run "response_cache_on_by_default" {
   command = apply
 
@@ -844,36 +864,25 @@ run "log_buckets_keep_ten_years_by_default" {
   }
 }
 
-run "log_retention_override_applies_everywhere" {
+run "every_app_log_keeps_ten_years" {
   command = apply
 
   variables {
-    log_retention_days = 365
-    public_mode        = true
-    public_subnet_ids  = ["subnet-0fedcba9876543210", "subnet-0fedcba9876543211"]
+    public_mode       = true
+    public_subnet_ids = ["subnet-0fedcba9876543210", "subnet-0fedcba9876543211"]
   }
 
   expect_failures = [check.public_mode_without_identity_provider]
 
   assert {
     condition = (
-      aws_cloudwatch_log_group.litellm.retention_in_days == 365 &&
-      aws_cloudwatch_log_group.waf[0].retention_in_days == 365 &&
-      aws_s3_bucket_lifecycle_configuration.access_logs.rule[0].expiration[0].days == 365 &&
-      aws_s3_bucket_lifecycle_configuration.request_logs.rule[0].expiration[0].days == 365
+      aws_cloudwatch_log_group.litellm.retention_in_days == 3653 &&
+      aws_cloudwatch_log_group.waf[0].retention_in_days == 3653 &&
+      aws_s3_bucket_lifecycle_configuration.access_logs.rule[0].expiration[0].days == 3653 &&
+      aws_s3_bucket_lifecycle_configuration.request_logs.rule[0].expiration[0].days == 3653
     )
-    error_message = "log_retention_days must drive the LiteLLM and WAF log groups and both log buckets."
+    error_message = "The LiteLLM and WAF log groups and both log buckets keep ten years (3653 days)."
   }
-}
-
-run "non_cloudwatch_retention_rejected" {
-  command = plan
-
-  variables {
-    log_retention_days = 3650
-  }
-
-  expect_failures = [var.log_retention_days]
 }
 
 run "litellm_logs_mask_email_addresses" {
@@ -971,11 +980,6 @@ run "config_object_is_content_addressed" {
     condition     = one([for st in jsondecode(aws_iam_role_policy.task.policy).Statement : st.Resource if st.Sid == "ReadConfig"]) == "arn:aws:s3:::${var.config_bucket_name}/config-*.yaml"
     error_message = "The task role may read the config objects only."
   }
-
-  assert {
-    condition     = length(terraform_data.upload_config) == 0
-    error_message = "Tests must never run the upload helper (upload_config_on_apply = false)."
-  }
 }
 
 run "alb_logs_use_the_log_delivery_service_principal" {
@@ -1061,16 +1065,6 @@ run "name_in_both_maps_rejected" {
   expect_failures = [var.provider_secret_arns]
 }
 
-run "short_migration_timeout_rejected" {
-  command = plan
-
-  variables {
-    migration_timeout_seconds = 30
-  }
-
-  expect_failures = [var.migration_timeout_seconds]
-}
-
 run "image_uri_override_still_replaces_the_pinned_image" {
   command = apply
 
@@ -1084,32 +1078,6 @@ run "image_uri_override_still_replaces_the_pinned_image" {
   }
 }
 
-run "keepalive_follows_the_idle_timeout" {
-  command = apply
-
-  variables {
-    alb_idle_timeout_seconds = 900
-  }
-
-  assert {
-    condition = aws_lb.this.idle_timeout == 900 && anytrue([
-      for e in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].environment :
-      e.name == "KEEPALIVE_TIMEOUT" && e.value == "905"
-    ])
-    error_message = "KEEPALIVE_TIMEOUT must be derived from alb_idle_timeout_seconds (+5 s)."
-  }
-}
-
-run "idle_timeout_above_alb_limit_rejected" {
-  command = plan
-
-  variables {
-    alb_idle_timeout_seconds = 4001
-  }
-
-  expect_failures = [var.alb_idle_timeout_seconds]
-}
-
 run "db_unavailable_override_warns" {
   command = plan
 
@@ -1119,7 +1087,6 @@ run "db_unavailable_override_warns" {
 
   expect_failures = [check.db_unavailable_requests_not_allowed]
 }
-
 
 run "request_count_restarts_rejected" {
   command = plan

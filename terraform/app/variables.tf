@@ -236,56 +236,6 @@ variable "deletion_protection" {
   default     = true
 }
 
-variable "architecture" {
-  description = "CPU architecture of the Fargate tasks: x86 or arm. The official LiteLLM image is multi-arch; Graviton is cheaper."
-  type        = string
-  default     = "arm"
-
-  validation {
-    condition     = contains(["x86", "arm"], var.architecture)
-    error_message = "architecture must be x86 or arm."
-  }
-}
-
-variable "vcpus" {
-  description = "vCPUs per gateway task (memory is 2 GiB per vCPU)."
-  type        = number
-  default     = 2
-}
-
-variable "desired_capacity" {
-  description = "Task count at creation. After that, auto scaling owns the count: redeploys never reset it."
-  type        = number
-  default     = 2
-}
-
-variable "min_capacity" {
-  description = "Auto scaling minimum task count."
-  type        = number
-  default     = 2
-}
-
-variable "max_capacity" {
-  description = "Auto scaling maximum task count. Keep the foundation's max_gateway_instances (free-IP check) and the RDS connection alarm in step with it."
-  type        = number
-  default     = 20
-}
-
-# Calibrate with a load test: LiteLLM runs a single worker process, which
-# saturates at about one vCPU, so on a 2-vCPU task the service CPU average may
-# never reach 75 % while latency already climbs.
-variable "cpu_target_utilization_percent" {
-  description = "Target-tracking CPU utilization for service auto scaling. Calibrate with a load test (single LiteLLM worker per task)."
-  type        = number
-  default     = 75
-}
-
-variable "memory_target_utilization_percent" {
-  description = "Target-tracking memory utilization for service auto scaling."
-  type        = number
-  default     = 70
-}
-
 variable "log_level" {
   description = "LITELLM_LOG level. DEBUG writes prompts and provider payloads to the logs (verified on 1.82.3 and 1.106.0): temporary troubleshooting only — the plan warns while it is on."
   type        = string
@@ -295,23 +245,6 @@ variable "log_level" {
     condition     = contains(["ERROR", "WARNING", "INFO", "DEBUG"], var.log_level)
     error_message = "log_level must be one of ERROR, WARNING, INFO, DEBUG."
   }
-}
-
-variable "log_retention_days" {
-  description = "Retention of every log the stack keeps: here the LiteLLM and WAF log groups and the ALB access-log and request-log buckets; the foundation uses the same variable. 3653 days is CloudWatch's ten-year value."
-  type        = number
-  default     = 3653
-
-  validation {
-    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.log_retention_days)
-    error_message = "log_retention_days must be a CloudWatch Logs retention value (for example 365, 1827 or 3653 for ten years)."
-  }
-}
-
-variable "waf_rate_limit_per_5_min" {
-  description = "Public mode WAF rate-based rule: requests per source IP per 5 minutes before blocking. LiteLLM's own per-key and per-team limits still apply."
-  type        = number
-  default     = 2000
 }
 
 variable "config_override_file" {
@@ -386,50 +319,10 @@ variable "extra_environment" {
   }
 }
 
-variable "migration_timeout_seconds" {
-  description = "How long the apply waits for the schema migration task before stopping it and failing (a cold image pull plus a large migration can exceed 10 minutes)."
-  type        = number
-  default     = 1200
-
-  validation {
-    condition     = var.migration_timeout_seconds >= 60
-    error_message = "migration_timeout_seconds must be at least 60."
-  }
-}
-
-variable "upload_config_on_apply" {
-  description = "Upload the rendered LiteLLM config to the config bucket during apply (needs the AWS CLI where Terraform runs). Disable only when the config is uploaded out of band."
-  type        = bool
-  default     = true
-}
-
 variable "disable_outbound_network_access" {
   description = "The foundation's no-internet mode (the same shared tfvars value). The app uses it only to warn when an identity provider cannot be reached."
   type        = bool
   default     = false
-}
-
-variable "run_migrations_on_apply" {
-  description = "Run the LiteLLM schema migration as a one-off ECS task, and gate the service rollout on its exit code (needs the AWS CLI where Terraform runs). Disable only when running the migration out of band."
-  type        = bool
-  default     = true
-}
-
-variable "alb_idle_timeout_seconds" {
-  description = "ALB idle timeout: how long the ALB waits for any byte on a connection. It must exceed the router's worst case for one non-streaming request ((1 + 2 timeout retries) x 120 s = 360 s) plus a buffer, or long completions get an ALB 504 instead of LiteLLM's own error. Independent of the 120 s drain settings."
-  type        = number
-  default     = 600
-
-  validation {
-    condition     = var.alb_idle_timeout_seconds >= 1 && var.alb_idle_timeout_seconds <= 4000
-    error_message = "alb_idle_timeout_seconds must be between 1 and 4000 (the ALB limit)."
-  }
-}
-
-variable "latency_p90_threshold_seconds" {
-  description = "p90 ALB response-time alarm threshold in seconds. LLM responses are measured to the last byte and routinely take tens of seconds, so the default only catches stuck or saturated targets; the 5XX alarms are the primary failure signal."
-  type        = number
-  default     = 60
 }
 
 variable "alarm_email" {

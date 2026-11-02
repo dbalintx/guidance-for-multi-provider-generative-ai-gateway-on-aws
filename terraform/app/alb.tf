@@ -6,6 +6,13 @@
 
 locals {
   serve_http = var.allow_insecure_http # private trial only, enforced in variables.tf
+
+  # How long the ALB waits for any byte on a connection. It must exceed the
+  # router's worst case for one non-streaming request, (1 + 2 timeout retries)
+  # x 120 s = 360 s (templates/config-base.yaml.tftpl), plus a buffer, or long
+  # completions get an ALB 504 instead of LiteLLM's own error. Independent of
+  # the 120 s drain settings (container.tf). KEEPALIVE_TIMEOUT follows it.
+  alb_idle_timeout_seconds = 600
 }
 
 resource "aws_lb" "this" {
@@ -14,7 +21,7 @@ resource "aws_lb" "this" {
   internal                   = !var.public_mode
   subnets                    = var.public_mode ? var.public_subnet_ids : var.private_subnet_ids
   security_groups            = [aws_security_group.alb.id]
-  idle_timeout               = var.alb_idle_timeout_seconds
+  idle_timeout               = local.alb_idle_timeout_seconds
   drop_invalid_header_fields = true
   enable_deletion_protection = var.deletion_protection
 

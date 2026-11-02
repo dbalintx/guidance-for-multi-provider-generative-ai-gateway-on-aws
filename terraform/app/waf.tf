@@ -3,6 +3,11 @@
 # matches (and false positives) can be triaged.
 
 locals {
+  # Per source IP and 5 minutes; LiteLLM's own per-key and per-team limits still
+  # apply. Clients behind one corporate NAT share an address, so a tighter
+  # limit would throttle whole offices.
+  waf_rate_limit_per_5_min = 2000
+
   # Common rule set rules that inspect the request body or file extensions, set
   # to count-only: prompts routinely contain HTML/JS, file paths, URLs such as
   # the instance-metadata address and file names, and exceed the 8 KB body-size
@@ -135,7 +140,7 @@ resource "aws_wafv2_web_acl" "this" {
 
     statement {
       rate_based_statement {
-        limit              = var.waf_rate_limit_per_5_min
+        limit              = local.waf_rate_limit_per_5_min
         aggregate_key_type = "IP"
       }
     }
@@ -159,7 +164,7 @@ resource "aws_wafv2_web_acl_association" "alb" {
 resource "aws_cloudwatch_log_group" "waf" {
   count             = var.public_mode ? 1 : 0
   name              = "aws-waf-logs-${var.deployment_name}"
-  retention_in_days = var.log_retention_days
+  retention_in_days = local.log_retention_days
   kms_key_id        = var.kms_key_arn
 }
 
