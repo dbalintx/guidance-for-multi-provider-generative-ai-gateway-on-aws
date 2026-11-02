@@ -359,15 +359,17 @@ curl -sS -X POST "<gateway-url>/model/new" \
   -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
-    "model_name": "claude-sonnet",
+    "model_name": "claude-opus-5-5",
     "litellm_params": {
-      "model": "bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0",
-      "aws_region_name": "us-east-1"
+      "model": "bedrock/au.anthropic.claude-opus-5-5",
+      "aws_region_name": "ap-southeast-2"
     }
   }'
 ```
 
-Use an inference profile ID your account has access to, and the Region it belongs to. Provider options are in the
+Use an inference profile ID your account has access to, and the Region it belongs to. List the profiles available
+in a Region with `aws bedrock list-inference-profiles --region <region> --query 'inferenceProfileSummaries[].inferenceProfileId'`.
+Provider options are in the
 [LiteLLM Bedrock documentation](https://docs.litellm.ai/docs/providers/bedrock). By default the task role may
 invoke any Bedrock model and inference profile in any Region; `bedrock_model_allowlist`,
 `bedrock_region_allowlist` and `cross_account_role_arns` narrow or extend that. Credentials for other providers
@@ -379,7 +381,7 @@ Then call it like any OpenAI-compatible endpoint:
 curl -sS "<gateway-url>/v1/chat/completions" \
   -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"model": "claude-sonnet", "messages": [{"role": "user", "content": "What is the capital of Australia?"}]}'
+  -d '{"model": "claude-opus-5-5", "messages": [{"role": "user", "content": "What is the capital of Australia?"}]}'
 ```
 
 > **Test with a natural question.** Echo-style canary prompts ("Say OK", "repeat after me") can come back with
