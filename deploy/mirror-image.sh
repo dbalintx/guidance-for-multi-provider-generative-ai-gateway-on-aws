@@ -28,9 +28,9 @@ deploy/terraform.tfvars:
 Options:
   --version <tag>      Image tag to copy, e.g. v1.106.6. Default: the tag
                        pinned in terraform/app/container.tf.
-  --platform <os/arch> Platform to copy. Default linux/arm64, which matches the
-                       app's default architecture = "arm"; use linux/amd64
-                       with architecture = "x86".
+  --platform <os/arch> Platform to copy. Default linux/arm64, the gateway
+                       tasks' architecture (Graviton); linux/amd64 is offered
+                       for other consumers of the mirrored image.
   --registry <prefix>  Push to this registry/namespace instead of ECR, e.g.
                        registry.example.com/platform. You must already be
                        logged in to it (docker login). No AWS calls are made.

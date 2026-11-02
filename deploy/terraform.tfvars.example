@@ -3,6 +3,8 @@
 # variable is documented in the owning module's variables.tf. The values shown
 # commented out are the defaults.
 #
+# Sizing and thresholds are fixed to the supported baseline — fork the code to change them.
+#
 # A variable only one root declares makes the other root print a harmless
 # "Value for undeclared variable" warning (Terraform folds repeats into
 # "...and N other similar warnings"). That is expected with one shared file;
@@ -23,7 +25,6 @@ tags            = {}      # your own tags, merged into the defaults
 # public_mode         = false # true: internet-facing ALB with WAF (foundation adds public subnets)
 # deletion_protection = true  # RDS + ALB protection, buckets kept; set false + deploy before undeploying (a final DB snapshot is still taken)
 # kms_key_arn         = null  # optional customer KMS key (key policy: docs/fresh-account-notes.md)
-# log_retention_days  = 3653  # ten years; every log: VPC flow, VPN, LiteLLM, WAF, ALB access + request-log buckets (CloudWatch values only)
 
 # --- foundation: network (leave vpc_id unset to create a VPC) ---
 # vpc_cidr                        = "10.0.0.0/16" # created VPC only; /24 or larger
@@ -36,22 +37,13 @@ tags            = {}      # your own tags, merged into the defaults
 # private_subnet_ids                   = ["subnet-...", "subnet-..."] # 2+ private subnets in different AZs
 # public_subnet_ids                    = []    # public mode: 2+ public subnets in different AZs
 # create_vpc_endpoints_in_existing_vpc = false # S3 gateway endpoint; interface ones with create_interface_endpoints
-# max_gateway_instances                = 20    # free-IP check only (rolling deploys need twice this); match max_capacity
 
 # --- foundation: extra data-store clients (any non-ECS consumer, e.g. pods on an EKS cluster) ---
 # extra_data_ingress_security_group_ids = []
 # extra_data_ingress_cidrs              = []
 
 # --- foundation: data stores ---
-# db_engine_version           = "17"
-# rds_instance_class          = "db.t4g.large" # supported baseline
-# rds_allocated_storage       = 20 # GB
-# rds_max_allocated_storage   = 200 # GB; storage autoscaling ceiling, must exceed rds_allocated_storage
-# db_backup_retention_days    = 30
-# redis_node_type             = "cache.t3.micro"
-# redis_num_cache_clusters    = 2 # Multi-AZ needs 2+
-# secret_recovery_window_days = 7 # 0 deletes immediately (test deployments only)
-# generated_secrets_version   = 1 # bump to rotate master key, UI password, Redis token, DB password (never the salt key); then redeploy the app
+# generated_secrets_version     = 1     # bump to rotate master key, UI password, Redis token, DB password (never the salt key); then redeploy the app
 # destroy_data_without_snapshot = false # throwaway deployments only: destroy the DB with no final snapshot and delete its backups
 
 # --- foundation: demo Client VPN (trials only; run deploy/setup-vpn.sh certs first) ---
@@ -59,7 +51,6 @@ tags            = {}      # your own tags, merged into the defaults
 # vpn_server_certificate_arn      = null # required with create_vpn
 # vpn_client_root_certificate_arn = null # required with create_vpn
 # vpn_client_cidr                 = "10.250.0.0/22" # /12../22, must not overlap the VPC
-# vpn_egress_ports                = [443]           # [443, 80] for an allow_insecure_http trial
 
 # --- app: TLS and DNS ---
 # certificate_arn     = "arn:aws:acm:..." # required unless allow_insecure_http
@@ -84,19 +75,8 @@ tags            = {}      # your own tags, merged into the defaults
 # --- app: licence (null = reduced mode, trials only) ---
 # litellm_license_secret_arn = null
 
-# --- app: tasks and scaling ---
-# architecture                      = "arm" # or "x86"
-# vcpus                             = 2     # memory is 2 GiB per vCPU
-# desired_capacity                  = 2     # at creation only; auto scaling owns it afterwards
-# min_capacity                      = 2
-# max_capacity                      = 20 # keep max_gateway_instances (foundation) in step
-# cpu_target_utilization_percent    = 75 # calibrate with a load test (one LiteLLM worker per task)
-# alb_idle_timeout_seconds          = 600 # above the router worst case (3 x 120 s); KEEPALIVE_TIMEOUT follows (+5 s)
-# memory_target_utilization_percent = 70
-# run_migrations_on_apply           = true # one-off migration task gates the service rollout
-# migration_timeout_seconds         = 1200 # the apply stops the migration task and fails after this
-# upload_config_on_apply            = true # upload the rendered config (config-<sha16>.yaml) during apply
-# image_uri                         = null # private copy of the image, e.g. from deploy/mirror-image.sh
+# --- app: image ---
+# image_uri = null # private copy of the image, e.g. from deploy/mirror-image.sh
 
 # --- app: LiteLLM config and environment ---
 # log_level              = "INFO" # DEBUG logs prompts: temporary troubleshooting only
@@ -115,7 +95,5 @@ tags            = {}      # your own tags, merged into the defaults
 # bedrock_region_allowlist = [] # empty = any region
 # cross_account_role_arns  = [] # explicit role ARNs; wildcards rejected
 
-# --- app: WAF (public mode) and alarms ---
-# waf_rate_limit_per_5_min      = 2000 # per source IP; over the limit the WAF answers 429
-# latency_p90_threshold_seconds = 60 # LLM responses take tens of seconds; 5XX alarms are the primary signal
-# alarm_email                   = null # subscribed to the alarm topic; confirm from the email
+# --- app: alarms ---
+# alarm_email = null # subscribed to the alarm topic; confirm from the email

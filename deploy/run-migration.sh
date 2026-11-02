@@ -12,6 +12,23 @@
 # migration next to a still-running one. No secrets are read or printed.
 set -euo pipefail
 
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  cat <<'EOF'
+Usage: deploy/run-migration.sh   (called by Terraform during the app apply)
+
+Runs LiteLLM's schema migration as a one-off ECS task and exits non-zero
+unless it succeeds, so the service rollout waits for a migrated database.
+
+Environment:
+  CLUSTER, TASK_DEFINITION, SUBNETS, SECURITY_GROUPS, AWS_REGION   (required)
+  MIGRATION_TIMEOUT_SECONDS  wait limit in seconds (default 1200); on timeout
+                             the task is stopped and the apply fails. Export
+                             it before deploy/deploy.sh to allow longer.
+  MIGRATION_POLL_SECONDS     poll interval in seconds (default 15)
+EOF
+  exit 0
+fi
+
 : "${CLUSTER:?}" "${TASK_DEFINITION:?}" "${SUBNETS:?}" "${SECURITY_GROUPS:?}" "${AWS_REGION:?}"
 TIMEOUT="${MIGRATION_TIMEOUT_SECONDS:-1200}"
 POLL="${MIGRATION_POLL_SECONDS:-15}"
@@ -44,7 +61,7 @@ while :; do
     aws ecs stop-task --region "$AWS_REGION" --cluster "$CLUSTER" --task "$TASK_ARN" \
       --reason "Migration timed out after ${TIMEOUT}s" >/dev/null ||
       echo "Could not stop ${TASK_ARN}; stop it manually before the next apply." >&2
-    echo "The service was not rolled. Raise migration_timeout_seconds if the migration needs longer." >&2
+    echo "The service was not rolled. Export MIGRATION_TIMEOUT_SECONDS (seconds) before deploying if the migration needs longer." >&2
     exit 1
   fi
   sleep "$POLL"
