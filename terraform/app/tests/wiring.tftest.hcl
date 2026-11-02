@@ -234,8 +234,8 @@ run "private_defaults" {
   }
 
   assert {
-    condition     = aws_cloudwatch_log_group.litellm.retention_in_days == 90
-    error_message = "90-day log retention by default."
+    condition     = aws_cloudwatch_log_group.litellm.retention_in_days == 3653
+    error_message = "Ten-year (3653-day) log retention by default."
   }
 
   assert {
@@ -337,7 +337,7 @@ run "public_mode_wiring" {
   }
 
   assert {
-    condition     = length(aws_cloudwatch_log_group.waf) == 1 && aws_cloudwatch_log_group.waf[0].name == "aws-waf-logs-llmgw" && aws_cloudwatch_log_group.waf[0].retention_in_days == 90
+    condition     = length(aws_cloudwatch_log_group.waf) == 1 && aws_cloudwatch_log_group.waf[0].name == "aws-waf-logs-llmgw" && aws_cloudwatch_log_group.waf[0].retention_in_days == 3653
     error_message = "WAF logs must go to a log group named aws-waf-logs-<deployment_name> (an AWS requirement) with the default retention."
   }
 
@@ -736,5 +736,75 @@ run "response_cache_disabled_through_override" {
   assert {
     condition     = yamldecode(aws_s3_object.litellm_config.content).litellm_settings.cache == false && yamldecode(aws_s3_object.litellm_config.content).litellm_settings.turn_off_message_logging == true
     error_message = "config_override_file must be able to switch the shared response cache off without dropping the other litellm_settings."
+  }
+}
+
+run "log_buckets_keep_ten_years_by_default" {
+  command = apply
+
+  assert {
+    condition = alltrue([
+      for c in [aws_s3_bucket_lifecycle_configuration.access_logs, aws_s3_bucket_lifecycle_configuration.request_logs] :
+      c.rule[0].expiration[0].days == 3653
+    ])
+    error_message = "The ALB access-log and request-log buckets must expire objects after the ten-year default."
+  }
+}
+
+run "log_retention_override_applies_everywhere" {
+  command = apply
+
+  variables {
+    log_retention_days = 365
+    public_mode        = true
+    public_subnet_ids  = ["subnet-0fedcba9876543210", "subnet-0fedcba9876543211"]
+  }
+
+  expect_failures = [check.public_mode_without_identity_provider]
+
+  assert {
+    condition = (
+      aws_cloudwatch_log_group.litellm.retention_in_days == 365 &&
+      aws_cloudwatch_log_group.waf[0].retention_in_days == 365 &&
+      aws_s3_bucket_lifecycle_configuration.access_logs.rule[0].expiration[0].days == 365 &&
+      aws_s3_bucket_lifecycle_configuration.request_logs.rule[0].expiration[0].days == 365
+    )
+    error_message = "log_retention_days must drive the LiteLLM and WAF log groups and both log buckets."
+  }
+}
+
+run "non_cloudwatch_retention_rejected" {
+  command = plan
+
+  variables {
+    log_retention_days = 3650
+  }
+
+  expect_failures = [var.log_retention_days]
+}
+
+run "litellm_logs_mask_email_addresses" {
+  command = apply
+
+  assert {
+    condition     = aws_cloudwatch_log_data_protection_policy.litellm.log_group_name == aws_cloudwatch_log_group.litellm.name
+    error_message = "The data-protection policy must be attached to the LiteLLM log group."
+  }
+
+  assert {
+    condition = (
+      [for s in jsondecode(aws_cloudwatch_log_data_protection_policy.litellm.policy_document).Statement : keys(s.Operation)[0]] == ["Audit", "Deidentify"] &&
+      alltrue([for s in jsondecode(aws_cloudwatch_log_data_protection_policy.litellm.policy_document).Statement : s.DataIdentifier == ["arn:aws:dataprotection::aws:data-identifier/EmailAddress"]])
+    )
+    error_message = "The policy must audit and mask email addresses (one Audit and one Deidentify statement, as CloudWatch requires)."
+  }
+}
+
+run "fallback_budget_recheck_disabled" {
+  command = apply
+
+  assert {
+    condition     = yamldecode(aws_s3_object.litellm_config.content).general_settings.enforce_fallback_budget == false
+    error_message = "enforce_fallback_budget must be false: the re-check counts the request's own budget reservation."
   }
 }

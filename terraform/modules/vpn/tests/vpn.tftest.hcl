@@ -239,3 +239,12 @@ run "uppercase_deployment_name_rejected" {
 
   expect_failures = [var.deployment_name]
 }
+
+run "connection_logs_keep_ten_years_by_default" {
+  command = apply
+
+  assert {
+    condition     = aws_cloudwatch_log_group.vpn.retention_in_days == 3653
+    error_message = "VPN connection logs default to the ten-year (3653-day) retention."
+  }
+}

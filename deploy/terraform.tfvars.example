@@ -23,7 +23,7 @@ tags            = {}      # your own tags, merged into the defaults
 # public_mode         = false # true: internet-facing ALB with WAF (foundation adds public subnets)
 # deletion_protection = true  # RDS + ALB protection, buckets kept; set false + deploy before undeploying
 # kms_key_arn         = null  # optional customer KMS key (key policy: docs/fresh-account-notes.md)
-# log_retention_days  = 90    # foundation: VPC flow logs + VPN logs; app: LiteLLM logs + S3 log buckets
+# log_retention_days  = 3653  # ten years; every log: VPC flow, VPN, LiteLLM, WAF, ALB access + request-log buckets (CloudWatch values only)
 
 # --- foundation: network (leave vpc_id unset to create a VPC) ---
 # vpc_cidr                        = "10.0.0.0/16" # created VPC only; /24 or larger
@@ -44,7 +44,7 @@ tags            = {}      # your own tags, merged into the defaults
 
 # --- foundation: data stores ---
 # db_engine_version           = "17"
-# rds_instance_class          = "db.t3.small"
+# rds_instance_class          = "db.t4g.large" # supported baseline
 # rds_allocated_storage       = 20 # GB
 # rds_max_allocated_storage   = 200 # GB; storage autoscaling ceiling, must exceed rds_allocated_storage
 # db_backup_retention_days    = 30

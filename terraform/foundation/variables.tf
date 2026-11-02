@@ -148,9 +148,14 @@ variable "secret_recovery_window_days" {
 }
 
 variable "log_retention_days" {
-  description = "CloudWatch retention for the foundation's log groups (VPC flow logs)."
+  description = "Retention of every log the stack keeps: here the VPC flow logs and the demo VPN connection logs; the app uses the same variable for its logs. 3653 days is CloudWatch's ten-year value."
   type        = number
-  default     = 90
+  default     = 3653
+
+  validation {
+    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.log_retention_days)
+    error_message = "log_retention_days must be a CloudWatch Logs retention value (for example 365, 1827 or 3653 for ten years)."
+  }
 }
 
 variable "db_engine_version" {
@@ -160,9 +165,9 @@ variable "db_engine_version" {
 }
 
 variable "rds_instance_class" {
-  description = "Instance class for the RDS database."
+  description = "Instance class for the RDS database. The default (Graviton, 2 vCPU, 8 GiB) is the supported baseline for every deployment; override only with a class RDS offers for the chosen PostgreSQL version."
   type        = string
-  default     = "db.t3.small"
+  default     = "db.t4g.large"
 }
 
 variable "rds_allocated_storage" {

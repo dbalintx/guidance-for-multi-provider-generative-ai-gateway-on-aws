@@ -292,8 +292,8 @@ run "created_vpc_has_flow_logs_endpoints_and_two_az_subnets" {
   }
 
   assert {
-    condition     = length(aws_flow_log.this) == 1 && aws_cloudwatch_log_group.vpc_flow_logs[0].retention_in_days == 90
-    error_message = "The created VPC must have flow logs with the 90-day default retention."
+    condition     = length(aws_flow_log.this) == 1 && aws_cloudwatch_log_group.vpc_flow_logs[0].retention_in_days == 3653
+    error_message = "The created VPC must have flow logs with the ten-year (3653-day) default retention."
   }
 
   assert {
@@ -432,4 +432,23 @@ run "rds_max_storage_not_above_allocated_rejected" {
   }
 
   expect_failures = [var.rds_max_allocated_storage]
+}
+
+run "rds_default_instance_class_is_the_baseline" {
+  command = plan
+
+  assert {
+    condition     = aws_db_instance.database.instance_class == "db.t4g.large"
+    error_message = "db.t4g.large is the supported baseline instance class."
+  }
+}
+
+run "non_cloudwatch_retention_rejected" {
+  command = plan
+
+  variables {
+    log_retention_days = 3650
+  }
+
+  expect_failures = [var.log_retention_days]
 }

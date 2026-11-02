@@ -1,7 +1,7 @@
 # Log sinks owned by the app: the LiteLLM CloudWatch log group, the ALB access-log
 # bucket and the LiteLLM request-log bucket (metadata only — message logging is
-# off in the rendered config). 90-day retention by default; the buckets
-# are kept on destroy while deletion_protection is on.
+# off in the rendered config). Ten-year retention by default (log_retention_days);
+# the buckets are kept on destroy while deletion_protection is on.
 
 data "aws_caller_identity" "current" {}
 
@@ -16,6 +16,34 @@ resource "aws_cloudwatch_log_group" "litellm" {
   name              = "/ecs/${var.deployment_name}-litellm"
   retention_in_days = var.log_retention_days
   kms_key_id        = var.kms_key_arn
+}
+
+# Masks email addresses in the LiteLLM logs (user IDs, key aliases and error
+# messages can carry them). CloudWatch requires one Audit and one Deidentify
+# statement over the same data identifiers.
+locals {
+  log_masked_data_identifiers = ["arn:aws:dataprotection::aws:data-identifier/EmailAddress"]
+}
+
+resource "aws_cloudwatch_log_data_protection_policy" "litellm" {
+  log_group_name = aws_cloudwatch_log_group.litellm.name
+
+  policy_document = jsonencode({
+    Name    = "${var.deployment_name}-litellm-data-protection"
+    Version = "2021-06-01"
+    Statement = [
+      {
+        Sid            = "Audit"
+        DataIdentifier = local.log_masked_data_identifiers
+        Operation      = { Audit = { FindingsDestination = {} } }
+      },
+      {
+        Sid            = "Redact"
+        DataIdentifier = local.log_masked_data_identifiers
+        Operation      = { Deidentify = { MaskConfig = {} } }
+      },
+    ]
+  })
 }
 
 # --- ALB access logs. ALB log delivery only supports SSE-S3 (AES256), never KMS. ---

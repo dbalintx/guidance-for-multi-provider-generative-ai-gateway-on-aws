@@ -12,6 +12,10 @@ general_settings:
   # The ALB is the reverse proxy LiteLLM 1.106 expects to be told about:
   # attribute UI sign-in attempts to the client, not to the ALB.
   trusted_proxy_ranges: ${jsonencode(trusted_proxy_ranges)}
+  # LiteLLM's fallback budget re-check reads the key and user spend counters,
+  # which already include this request's own budget reservation, so a key close
+  # to its budget is refused its fallback by its own hold. Re-evaluate on upgrade.
+  enforce_fallback_budget: false
 
 litellm_settings:
   json_logs: true

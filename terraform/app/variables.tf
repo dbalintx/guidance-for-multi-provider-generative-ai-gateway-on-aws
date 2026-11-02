@@ -295,9 +295,14 @@ variable "log_level" {
 }
 
 variable "log_retention_days" {
-  description = "Retention of the LiteLLM CloudWatch logs and of the S3 access/request logs."
+  description = "Retention of every log the stack keeps: here the LiteLLM and WAF log groups and the ALB access-log and request-log buckets; the foundation uses the same variable. 3653 days is CloudWatch's ten-year value."
   type        = number
-  default     = 90
+  default     = 3653
+
+  validation {
+    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.log_retention_days)
+    error_message = "log_retention_days must be a CloudWatch Logs retention value (for example 365, 1827 or 3653 for ten years)."
+  }
 }
 
 variable "waf_rate_limit_per_5_min" {

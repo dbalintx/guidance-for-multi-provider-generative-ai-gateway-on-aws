@@ -12,7 +12,7 @@ locals {
 }
 
 resource "aws_cloudwatch_log_group" "vpn" {
-  #checkov:skip=CKV_AWS_338:Demo-only endpoint; retention is configurable via log_retention_days (default 90).
+  #checkov:skip=CKV_AWS_338:Demo-only endpoint; retention is configurable via log_retention_days (default 3653).
   name              = "/${var.deployment_name}/vpn/connections"
   retention_in_days = var.log_retention_days
   kms_key_id        = var.kms_key_arn
