@@ -54,9 +54,17 @@ case "${1:-}" in
   teardown)
     api GET /model/info | jq -r --arg p "${PREFIX}-" '.data[] | select(.model_name | startswith($p)) | .model_info.id' |
       while read -r id; do api POST /model/delete "$(jq -cn --arg i "$id" '{id: $i}')" >/dev/null && echo "deleted model ${id}"; done
-    api GET "/key/list?return_full_object=true&size=1000" |
-      jq -r --arg p "${PREFIX}-" '.keys[] | select((.key_alias // "") | startswith($p)) | .token' |
-      while read -r token; do api POST /key/delete "$(jq -cn --arg t "$token" '{keys: [$t]}')" >/dev/null && echo "deleted key ${token:0:8}..."; done
+    page=1 tokens=()
+    while :; do # collect first, delete after: deleting shifts the pages
+      api GET "/key/list?return_full_object=true&size=100&page=${page}" >"${TMP}/keys"
+      while read -r token; do tokens+=("$token"); done < <(jq -r --arg p "${PREFIX}-" \
+        '.keys[] | select((.key_alias // "") | startswith($p)) | .token' "${TMP}/keys")
+      [ "$page" -lt "$(jq -r '.total_pages // 1' "${TMP}/keys")" ] || break
+      page=$((page + 1))
+    done
+    for token in ${tokens[@]+"${tokens[@]}"}; do
+      api POST /key/delete "$(jq -cn --arg t "$token" '{keys: [$t]}')" >/dev/null && echo "deleted key ${token:0:8}..."
+    done
     ;;
   *) sed -n '2,17p' "$0"; exit 2 ;;
 esac
