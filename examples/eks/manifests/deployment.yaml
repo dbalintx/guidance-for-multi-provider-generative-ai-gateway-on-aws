@@ -1,0 +1,143 @@
+# The gateway pods: the container settings of terraform/app/container.tf
+# (image, port, environment, secret names, health check, stop timeout) in
+# Kubernetes form. scripts/tests/test_render.py fails when the two drift apart.
+# The quoted placeholders are filled in by scripts/render.py.
+#
+# Differences from container.tf, on purpose:
+# - the config is a ConfigMap mounted at /etc/litellm (--config) instead of an
+#   S3 object, so LITELLM_CONFIG_BUCKET_NAME/_OBJECT_KEY are not set;
+#   LITELLM_CONFIG_SHA still changes with the config and rolls the pods;
+# - AWS_REGION is set explicitly (ECS injects it into every task);
+# - secrets come from the Kubernetes Secret litellm-secrets, written from
+#   Secrets Manager by scripts/deploy.sh.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm
+  namespace: "${NAMESPACE}"
+  labels:
+    app.kubernetes.io/name: litellm
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: litellm
+      app.kubernetes.io/component: gateway
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: litellm
+        app.kubernetes.io/component: gateway
+    spec:
+      serviceAccountName: "${SERVICE_ACCOUNT}"
+      automountServiceAccountToken: false
+      # stop_timeout (120 s between SIGTERM and SIGKILL) plus the preStop pause.
+      terminationGracePeriodSeconds: 130
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: litellm
+              app.kubernetes.io/component: gateway
+      containers:
+        - name: litellm
+          image: "${IMAGE}"
+          # The image's entrypoint execs `litellm`; these are its arguments.
+          args: ["--port", "4000", "--config", "/etc/litellm/config.yaml"]
+          ports:
+            - name: http
+              containerPort: 4000
+          env:
+            - name: LITELLM_LOG
+              value: "INFO" # LiteLLM writes prompts at DEBUG
+            - name: JSON_LOGS
+              value: "True"
+            - name: LITELLM_CONFIG_SHA
+              value: "${CONFIG_SHA}"
+            - name: UI_USERNAME
+              value: "admin"
+            - name: REDIS_HOST
+              value: "${REDIS_HOST}"
+            - name: REDIS_PORT
+              value: "${REDIS_PORT}"
+            - name: REDIS_SSL
+              value: "True"
+            # Only the migration Job (migrate-job.yaml) updates the schema.
+            - name: DISABLE_SCHEMA_UPDATE
+              value: "true"
+            - name: LITELLM_LOCAL_MODEL_COST_MAP
+              value: "True"
+            # Longer than a 600 s load balancer idle timeout, as on ECS. Keep it
+            # above the idle timeout of whatever proxy you put in front.
+            - name: KEEPALIVE_TIMEOUT
+              value: "605"
+            - name: AWS_REGION
+              value: "${AWS_REGION}"
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: litellm-secrets, key: DATABASE_URL } }
+            - name: LITELLM_MASTER_KEY
+              valueFrom: { secretKeyRef: { name: litellm-secrets, key: LITELLM_MASTER_KEY } }
+            - name: LITELLM_SALT_KEY
+              valueFrom: { secretKeyRef: { name: litellm-secrets, key: LITELLM_SALT_KEY } }
+            - name: REDIS_PASSWORD
+              valueFrom: { secretKeyRef: { name: litellm-secrets, key: REDIS_PASSWORD } }
+            - name: UI_PASSWORD
+              valueFrom: { secretKeyRef: { name: litellm-secrets, key: UI_PASSWORD } }
+          # ECS runs 2 vCPU / 4 GiB tasks; LiteLLM's single worker saturates at
+          # about one vCPU.
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              memory: 4Gi
+          # Same path as the ECS health check and the ALB target group.
+          startupProbe:
+            httpGet: { path: /health/liveliness, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 30
+          # As the ECS container health check: 10 misses, 30 s apart, before a
+          # restart, so a busy pod is not killed with its in-flight streams.
+          livenessProbe:
+            httpGet: { path: /health/liveliness, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 10
+          # As the ALB target group: out of rotation after 3 misses, back after 2 passes.
+          readinessProbe:
+            httpGet: { path: /health/liveliness, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 10
+            successThreshold: 2
+            failureThreshold: 3
+          lifecycle:
+            # Lets the endpoint removal reach every node before SIGTERM, so no
+            # new connection is routed to a stopping pod.
+            preStop:
+              sleep:
+                seconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/litellm
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: "${CONFIG_MAP}"

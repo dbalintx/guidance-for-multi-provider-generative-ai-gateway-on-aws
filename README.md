@@ -96,6 +96,7 @@ through a demo Client VPN, ready in one `deploy/deploy.sh` run.
 ## Examples
 
 - [examples/agentcore/](examples/agentcore/): using the gateway from Amazon Bedrock AgentCore.
+- [examples/eks/](examples/eks/): running the gateway on an existing Amazon EKS cluster (a non-production starting point).
 
 ## Cost
 
