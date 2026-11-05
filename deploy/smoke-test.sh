@@ -232,7 +232,7 @@ check "authenticated call" 200 "$(code_auth "$URL/v1/models")"
 check "schema migrated (key list)" 200 "$(code_auth "$URL/key/list")"
 
 if [[ -n "$MODEL" ]]; then
-  BODY="$(printf '{"model":"%s","max_tokens":5,"messages":[{"role":"user","content":"Say OK"}]}' "$MODEL")"
+  BODY="$(printf '{"model":"%s","max_tokens":20,"messages":[{"role":"user","content":"What is 2 + 2?"}]}' "$MODEL")"
   check "completion with $MODEL" 200 \
     "$(code_auth -H 'Content-Type: application/json' -d "$BODY" "$URL/v1/chat/completions")"
 fi

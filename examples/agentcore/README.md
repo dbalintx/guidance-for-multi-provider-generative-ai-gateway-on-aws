@@ -190,15 +190,15 @@ terraform -chdir=terraform test
   workload access token. The secret is created and owned by this example
   (`EXTERNAL` secret source), so the key never enters Terraform state, and can
   be rotated without redeploying.
-- **Registering the agent in LiteLLM (Agents).** LiteLLM can also *front*
-  AgentCore agents: its agent registry has a `bedrock_agentcore` agent type
-  (model `bedrock/agentcore/<runtime ARN>`), which makes the agent visible and
-  invokable through the gateway (A2A at `/a2a/<agent id>`) with per-agent
-  rate limits, access groups and spend. That is the inbound direction, and it
-  needs the gateway's task role to be allowed `bedrock-agentcore:InvokeAgentRuntime`
-  on the runtime, which the gateway stack does not grant. This example covers
-  the outbound direction (the agent as a governed gateway client), which needs
-  no gateway change.
+- **Fronting the agent with LiteLLM (Agents).** This example governs the
+  agent's outbound model calls. To also govern who may call the agent, consider
+  LiteLLM's agent registry: it has a `bedrock_agentcore` agent type (model
+  `bedrock/agentcore/<runtime ARN>`) for exposing AgentCore agents through the
+  gateway (A2A at `/a2a/<agent id>`) with per-agent rate limits, access groups
+  and spend tracking. It requires granting the gateway's task role
+  `bedrock-agentcore:InvokeAgentRuntime` on the runtime, which the gateway
+  stack does not do by default. See the
+  [LiteLLM agents documentation](https://docs.litellm.ai/) for setup.
 - **Gateways without internet access.** In a VPC without a NAT gateway the
   runtime needs VPC endpoints for everything it calls: S3 (gateway endpoint, for
   the code bundle), CloudWatch Logs, and AgentCore (`bedrock-agentcore`, for
