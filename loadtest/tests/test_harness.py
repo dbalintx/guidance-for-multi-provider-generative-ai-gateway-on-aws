@@ -80,3 +80,17 @@ def test_summary_per_step(tmp_path):
     second = summarize.summarise([r for r in records if steps[1][1] <= r["t"] < steps[1][2]], 10)
     assert second["requests"] == 2 and second["errors"] == "50.00%" and second["error classes"] == "502x1"
     assert second["TTFT p95 s"] == "0.30"
+
+
+def test_memory_trend_slope_per_task():
+    import collect_metrics
+
+    rows = [
+        {"task": "a", "minute": "2026-01-01 10:00", "mem_mib": 100, "cpu_pct": 10},
+        {"task": "a", "minute": "2026-01-01 10:30", "mem_mib": 125, "cpu_pct": 20},
+        {"task": "a", "minute": "2026-01-01 11:00", "mem_mib": 150, "cpu_pct": 30},
+        {"task": "b", "minute": "2026-01-01 10:00", "mem_mib": 90, "cpu_pct": 5},
+    ]
+    a, b = collect_metrics.memory_trend(rows)
+    assert (a["slope_mib_per_h"], a["max_mib"], a["cpu_avg_pct"]) == (50.0, 150, 20.0)
+    assert b["slope_mib_per_h"] == 0.0

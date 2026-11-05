@@ -117,8 +117,10 @@ python analysis/collect_metrics.py --cluster <deployment>-cluster --service <dep
 - **Saturation point**: the step at which TTFT p95 or the error share climbs
   while req/s stops growing. Compare the task CPU % (`tasks.csv`) at that step
   with the CPU target-tracking value: if the service never reaches the target
-  before latency climbs, CPU scaling does not protect latency.
-- **Memory**: `tasks.csv` memory per task over the soak. Growth that continues
+  before latency climbs, CPU scaling does not protect latency. LiteLLM runs one
+  worker process per task here: it saturates at one vCPU, so the CPU average
+  of a 2-vCPU task plateaus near 50 %.
+- **Memory**: `memory.csv` (per-task slope) and `tasks.csv` over the soak. Growth that continues
   at constant load, and is not returned after the load stops, is a leak.
 - **Errors**: `error classes` (HTTP status, or the exception for streams cut
   short) and the ALB counts in `service.csv` (`elb_502` without matching

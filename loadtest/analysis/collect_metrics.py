@@ -6,6 +6,7 @@
 
 Writes, per minute:
   tasks.csv     per task: CPU % of the task reservation, memory MiB and % (Container Insights)
+  memory.csv    per task over the window: first/last/max memory, slope in MiB per hour
   service.csv   service CPU/memory average and maximum (AWS/ECS, what target tracking uses),
                 running/desired task count, ALB requests, 5xx/502/503/504, target response time
   scaling.txt   Application Auto Scaling activities in the window
@@ -125,6 +126,34 @@ def scaling_activities(aas, cluster, service, start, end) -> list[str]:
                 when = a["StartTime"].astimezone(UTC)
                 out.append(f"{when:%Y-%m-%d %H:%M:%S} {a['StatusCode']}: {a['Description']} ({a.get('Cause', '')})")
     return sorted(out)
+
+
+def memory_trend(rows: list[dict]) -> list[dict]:
+    """Per task: first/last/max memory and the least-squares slope in MiB per hour."""
+    out = []
+    for task in sorted({r["task"] for r in rows}):
+        series = [r for r in rows if r["task"] == task]
+        ts = [datetime.strptime(r["minute"], "%Y-%m-%d %H:%M").timestamp() / 3600 for r in series]
+        ms = [r["mem_mib"] for r in series]
+        n = len(ts)
+        slope = 0.0
+        if n > 1:
+            mt, mm = sum(ts) / n, sum(ms) / n
+            var = sum((t - mt) ** 2 for t in ts)
+            slope = sum((t - mt) * (m - mm) for t, m in zip(ts, ms, strict=True)) / var if var else 0.0
+        out.append(
+            {
+                "task": task,
+                "from": series[0]["minute"],
+                "to": series[-1]["minute"],
+                "first_mib": ms[0],
+                "last_mib": ms[-1],
+                "max_mib": max(ms),
+                "slope_mib_per_h": round(slope, 1),
+                "cpu_avg_pct": round(sum(r["cpu_pct"] for r in series) / n, 1),
+            }
+        )
+    return out
 
 
 def write_csv(path: str, rows: list[dict]) -> None:
