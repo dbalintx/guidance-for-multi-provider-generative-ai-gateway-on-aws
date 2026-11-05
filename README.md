@@ -78,7 +78,7 @@ through a demo Client VPN, ready in one `deploy/deploy.sh` run.
 | Page | Contents |
 | --- | --- |
 | [docs/setup.md](docs/setup.md) | Prerequisites, deployment options (trial, private, public), identity provider, demo VPN, first model, verification |
-| [docs/operations.md](docs/operations.md) | Upgrades, configuration changes, secret rotation, licence, monitoring, backups and teardown, troubleshooting |
+| [docs/operations.md](docs/operations.md) | Upgrades, configuration changes, generated secrets, licence, monitoring, backups and teardown, troubleshooting |
 | [docs/reference.md](docs/reference.md) | Every Terraform input and output |
 | [terraform/modules/observability/README.md](terraform/modules/observability/README.md) | Alarms and dashboard |
 | [LiteLLM documentation](https://docs.litellm.ai/) | Everything LiteLLM itself does: models, keys, teams, budgets, guardrails, SSO |

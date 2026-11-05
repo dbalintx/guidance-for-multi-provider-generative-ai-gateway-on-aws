@@ -87,7 +87,7 @@ resource "aws_db_instance" "database" {
   db_name                = local.db_name
   username               = local.db_username
   password_wo            = ephemeral.random_password.db.result
-  password_wo_version    = var.generated_secrets_version
+  password_wo_version    = local.generated_secrets_wo_version
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.db.id]
   parameter_group_name   = aws_db_parameter_group.postgres.name

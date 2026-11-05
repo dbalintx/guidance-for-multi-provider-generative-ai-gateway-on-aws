@@ -49,6 +49,6 @@ resource "aws_elasticache_replication_group" "redis" {
   transit_encryption_enabled = true
   transit_encryption_mode    = "required"
   auth_token_wo              = ephemeral.random_password.redis_auth.result
-  auth_token_wo_version      = var.generated_secrets_version
+  auth_token_wo_version      = local.generated_secrets_wo_version
   auth_token_update_strategy = "SET"
 }

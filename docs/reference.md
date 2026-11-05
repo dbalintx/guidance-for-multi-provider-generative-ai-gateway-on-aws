@@ -35,7 +35,6 @@ Descriptions combine both roots.
 | `extra_data_ingress_security_group_ids` | `list(string)` | `[]` | Extra security groups admitted to RDS and Redis, for any non-ECS client of the data stores (for example pods on an EKS cluster). |
 | `extra_data_ingress_cidrs` | `list(string)` | `[]` | Extra CIDR ranges admitted to RDS and Redis, for any non-ECS client of the data stores. |
 | `destroy_data_without_snapshot` | `bool` | `false` | Throwaway deployments only: on destroy, delete the database WITHOUT a final snapshot and delete its automated backups. Default false: every destroy leaves a final snapshot and keeps the automated backups. |
-| `generated_secrets_version` | `number` | `1` | Version of the generated secret values. Bump it to rotate the master key, UI password, Redis auth token and database password (the salt key never rotates); then redeploy the app so running tasks pick up the new values. |
 | `create_vpn` | `bool` | `false` | Create the demo/test Client VPN into the VPC (mutual TLS, split tunnel, VPC range only). Not a production access path. Run deploy/setup-vpn.sh certs first for the two certificate ARNs. |
 | `vpn_server_certificate_arn` | `string` | `null` | ACM ARN of the Client VPN server certificate (printed by deploy/setup-vpn.sh certs). Required when create_vpn. |
 | `vpn_client_root_certificate_arn` | `string` | `null` | ACM ARN whose chain validates the VPN client certificate (printed by deploy/setup-vpn.sh certs). Required when create_vpn. |
