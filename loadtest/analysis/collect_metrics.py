@@ -108,7 +108,7 @@ def service_metrics(cw, cluster, service, alb, tg, start, end) -> list[dict]:
     minutes = sorted({t for s in series.values() for t in s})
     rows = []
     for t in minutes:
-        row = {"minute": t.strftime("%Y-%m-%d %H:%M")}
+        row = {"minute": t.astimezone(UTC).strftime("%Y-%m-%d %H:%M")}
         for key in specs:
             v = series[key].get(t)
             row[key] = "" if v is None else round(v, 3 if key == "trt_p95_s" else 1)
@@ -122,9 +122,8 @@ def scaling_activities(aas, cluster, service, start, end) -> list[str]:
     for page in paginator.paginate(ServiceNamespace="ecs", ResourceId=f"service/{cluster}/{service}"):
         for a in page["ScalingActivities"]:
             if start <= a["StartTime"] <= end:
-                out.append(
-                    f"{a['StartTime']:%Y-%m-%d %H:%M:%S} {a['StatusCode']}: {a['Description']} ({a.get('Cause', '')})"
-                )
+                when = a["StartTime"].astimezone(UTC)
+                out.append(f"{when:%Y-%m-%d %H:%M:%S} {a['StatusCode']}: {a['Description']} ({a.get('Cause', '')})")
     return sorted(out)
 
 
