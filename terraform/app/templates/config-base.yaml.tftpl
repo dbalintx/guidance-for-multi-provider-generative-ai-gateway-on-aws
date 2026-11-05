@@ -17,12 +17,6 @@ general_settings:
   # stops without a graceful shutdown loses up to 60 s of spend records, and
   # persisted spend (budgets across tasks) lags by up to a minute.
   proxy_batch_write_at: 60
-  # LiteLLM's fallback budget re-check reads the key and user spend counters,
-  # which still include this request's own budget reservation. When the
-  # request's estimated maximum cost fills the remaining budget (for example,
-  # max_tokens unset on a small budget, even with no spend yet), the fallback
-  # can be refused by the request's own hold. Re-evaluate on upgrade.
-  enforce_fallback_budget: false
 
 litellm_settings:
   json_logs: true

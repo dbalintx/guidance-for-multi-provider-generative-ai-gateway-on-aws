@@ -902,15 +902,6 @@ run "litellm_logs_mask_email_addresses" {
   }
 }
 
-run "fallback_budget_recheck_disabled" {
-  command = apply
-
-  assert {
-    condition     = yamldecode(terraform_data.litellm_config.input.content).general_settings.enforce_fallback_budget == false
-    error_message = "enforce_fallback_budget must be false: the re-check counts the request's own budget reservation."
-  }
-}
-
 run "no_alb_egress_to_the_internet_without_identity_provider" {
   command = apply
 
@@ -953,7 +944,7 @@ run "override_passes_unknown_top_level_keys_through" {
   assert {
     condition = (
       yamldecode(terraform_data.litellm_config.input.content).general_settings.master_key_header_name == "x-api-key" &&
-      yamldecode(terraform_data.litellm_config.input.content).general_settings.enforce_fallback_budget == false &&
+      yamldecode(terraform_data.litellm_config.input.content).general_settings.proxy_batch_write_at == 60 &&
       length(yamldecode(terraform_data.litellm_config.input.content).general_settings.trusted_proxy_ranges) == 1
     )
     error_message = "general_settings from the override must merge key-by-key over the base, not replace it."
