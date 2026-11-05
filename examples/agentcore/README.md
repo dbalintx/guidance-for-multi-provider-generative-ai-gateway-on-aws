@@ -126,17 +126,12 @@ for example after the key's budget is spent:
 
 ## Verify in the gateway
 
-```bash
-scripts/verify.sh
-```
-
-shows the agent key's model list, limits and spend, and its latest requests
-from LiteLLM's spend logs (time, key alias, model, tokens, cost, status; no
-prompts or responses). Each agent invocation appears as one request per model
-call; their tokens add up to the `usage` the agent reports. LiteLLM writes
-spend in batches, so allow about a minute after an invocation. The same data is
-in the LiteLLM admin UI under **Virtual Keys** and **Logs**, filtered by the key
-alias.
+Each agent invocation appears in the LiteLLM admin UI under **Logs** as one
+request per model call, filtered by the key alias; their tokens add up to the
+`usage` the agent reports. **Virtual Keys** shows the key's limits and spend.
+`scripts/agent-key.sh status` prints the same limits and spend from the command
+line. LiteLLM writes spend in batches, so allow about a minute after an
+invocation.
 
 ## Operate
 

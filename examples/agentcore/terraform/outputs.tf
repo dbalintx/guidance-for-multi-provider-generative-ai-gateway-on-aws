@@ -1,4 +1,4 @@
-# Read by scripts/agent-key.sh, scripts/invoke.py and scripts/verify.sh.
+# Read by scripts/agent-key.sh and scripts/invoke.py.
 # Identifiers only: no secret values.
 
 output "agent_runtime_arn" {
@@ -36,7 +36,7 @@ output "code_bucket" {
   value       = aws_s3_bucket.code.bucket
 }
 
-# Inputs of scripts/agent-key.sh rotate|status and scripts/verify.sh.
+# Inputs of scripts/agent-key.sh rotate|status.
 output "gateway_key_settings" {
   description = "Where and how the agent's LiteLLM virtual key is managed (no secret values)."
   value = {
