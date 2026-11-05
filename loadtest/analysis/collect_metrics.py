@@ -177,9 +177,9 @@ def main() -> None:
     p.add_argument("--out", required=True)
     a = p.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    write_csv(
-        os.path.join(a.out, "tasks.csv"), task_metrics(boto3.client("logs"), a.cluster, a.service, a.start, a.end)
-    )
+    tasks = task_metrics(boto3.client("logs"), a.cluster, a.service, a.start, a.end)
+    write_csv(os.path.join(a.out, "tasks.csv"), tasks)
+    write_csv(os.path.join(a.out, "memory.csv"), memory_trend(tasks))
     write_csv(
         os.path.join(a.out, "service.csv"),
         service_metrics(
