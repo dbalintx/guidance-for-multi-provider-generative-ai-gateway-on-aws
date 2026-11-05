@@ -58,7 +58,7 @@ case "$cmd" in
     echo "${RESULTS_DIR}/${run}"
     ;;
   stop)
-    send "stop load tests" "pkill -INT -f /opt/loadtest/venv/bin/locust || true; echo stopped"
+    send "stop load tests" "pkill -INT -f /opt/loadtest/venv/bin/locust; for i in \$(seq 1 30); do pgrep -f /opt/loadtest/venv/bin/locust >/dev/null || break; sleep 5; done; pkill -KILL -f /opt/loadtest/venv/bin/locust; pgrep -fl locust || echo stopped"
     ;;
   *)
     sed -n '2,13p' "$0"; exit 2 ;;

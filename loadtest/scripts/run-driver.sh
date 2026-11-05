@@ -17,6 +17,9 @@ DEST="s3://${ARTIFACTS_BUCKET}/results/${RUN}/"
 mkdir -p "${DIR}/results"
 cd "$DIR"
 
+if pgrep -f /opt/loadtest/venv/bin/locust >/dev/null; then
+  echo "another locust run is active (driver.sh stop)" >&2; exit 1
+fi
 until [ -f /opt/loadtest/ready ]; do echo "waiting for bootstrap"; sleep 10; done
 aws s3 cp --quiet "s3://${ARTIFACTS_BUCKET}/scenario/locustfile.py" locustfile.py
 
@@ -32,7 +35,7 @@ SYNC_PID=$!
 trap 'kill $SYNC_PID 2>/dev/null || true' EXIT
 
 args=(-f locustfile.py --headless --only-summary -H "$GATEWAY_URL"
-  --processes "${PROCESSES:-$(nproc)}" --csv results/locust --html results/report.html
+  --processes "${PROCESSES:-$(nproc)}" --master-bind-host 127.0.0.1 --csv results/locust --html results/report.html
   --stop-timeout 120)
 if [ -z "${STEPS:-}" ]; then
   args+=(-u "${USERS:-10}" -r "${SPAWN_RATE:-5}" -t "${RUN_TIME:-5m}")
