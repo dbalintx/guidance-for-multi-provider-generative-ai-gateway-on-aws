@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -255,3 +257,14 @@ def test_cli_writes_every_manifest(tmp_path, capsys):
     assert len(lines) == len(render.SECRETS)
 
     assert render.main([*args[:-1], str(out), "--image", "not-pinned"]) == 1
+
+
+@pytest.mark.skipif(shutil.which("kubeconform") is None, reason="kubeconform not on PATH")
+def test_manifests_match_the_kubernetes_schemas(tmp_path):
+    files = render.render_all(TF_OUTPUTS, FOUNDATION, render.image_from_container_tf(CONTAINER_TF))
+    for name, content in files.items():
+        (tmp_path / name).write_text(content)
+    result = subprocess.run(
+        ["kubeconform", "-strict", "-summary", str(tmp_path)], capture_output=True, text=True, timeout=120
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
