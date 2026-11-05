@@ -1,0 +1,18 @@
+# Namespace and the service account the Pod Identity association binds to the
+# pods' IAM role (terraform/iam.tf). The placeholders are filled in by
+# scripts/render.py.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: "${NAMESPACE}"
+  labels:
+    app.kubernetes.io/name: litellm
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: "${SERVICE_ACCOUNT}"
+  namespace: "${NAMESPACE}"
+  labels:
+    app.kubernetes.io/name: litellm
+automountServiceAccountToken: false # LiteLLM never calls the Kubernetes API
