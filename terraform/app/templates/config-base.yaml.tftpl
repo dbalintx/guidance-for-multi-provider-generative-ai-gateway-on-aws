@@ -18,8 +18,10 @@ general_settings:
   # persisted spend (budgets across tasks) lags by up to a minute.
   proxy_batch_write_at: 60
   # LiteLLM's fallback budget re-check reads the key and user spend counters,
-  # which already include this request's own budget reservation, so a key close
-  # to its budget is refused its fallback by its own hold. Re-evaluate on upgrade.
+  # which still include this request's own budget reservation. When the
+  # request's estimated maximum cost fills the remaining budget (for example,
+  # max_tokens unset on a small budget, even with no spend yet), the fallback
+  # can be refused by the request's own hold. Re-evaluate on upgrade.
   enforce_fallback_budget: false
 
 litellm_settings:
