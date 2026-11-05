@@ -20,5 +20,5 @@ done
 
 source "${SCRIPT_DIR}/tf-init.sh"
 "${SCRIPT_DIR}/build.sh"
-terraform -chdir="$TF_DIR" apply -input=false -var-file="$TFVARS" "${APPROVE[@]}"
+terraform -chdir="$TF_DIR" apply -input=false -var-file="$TFVARS" ${APPROVE[@]+"${APPROVE[@]}"}
 terraform -chdir="$TF_DIR" output -json | jq '{agent_runtime_arn: .agent_runtime_arn.value, agent_runtime_id: .agent_runtime_id.value}'

@@ -24,4 +24,4 @@ source "${SCRIPT_DIR}/tf-init.sh"
 [ "$REVOKE" = true ] || export SKIP_KEY_REVOCATION=1
 # The bundle is only needed to evaluate the configuration; build it if absent.
 [ -f "${EXAMPLE_DIR}/build/agent.zip" ] || "${SCRIPT_DIR}/build.sh"
-terraform -chdir="$TF_DIR" destroy -input=false -var-file="$TFVARS" "${APPROVE[@]}"
+terraform -chdir="$TF_DIR" destroy -input=false -var-file="$TFVARS" ${APPROVE[@]+"${APPROVE[@]}"}
