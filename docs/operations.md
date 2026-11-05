@@ -10,7 +10,7 @@ OUT=deploy/.generated/llmgw-foundation-outputs.tfvars.json
 - [How changes roll out](#how-changes-roll-out)
 - [Upgrading LiteLLM](#upgrading-litellm)
 - [Changing the LiteLLM configuration](#changing-the-litellm-configuration)
-- [Rotating the generated secrets](#rotating-the-generated-secrets)
+- [Generated secrets](#generated-secrets)
 - [Temporary DEBUG logging](#temporary-debug-logging)
 - [Adding the LiteLLM Enterprise licence](#adding-the-litellm-enterprise-licence)
 - [Monitoring and alarms](#monitoring-and-alarms)
@@ -99,26 +99,11 @@ plan shows the rendered config's diff, and every change rolls the tasks. The pla
 Environment variables for LiteLLM go in `extra_environment` (plain values) and `provider_secret_arns` (Secrets
 Manager references). Names the stack sets itself are rejected.
 
-## Rotating the generated secrets
+## Generated secrets
 
-The foundation generates the master key, the UI password, the Redis auth token and the database password. To
-rotate them together:
-
-1. Increase `generated_secrets_version` in `deploy/terraform.tfvars` (for example from `1` to `2`).
-2. Run `deploy/deploy.sh`. The foundation writes new values to Secrets Manager, RDS and ElastiCache.
-3. Restart the tasks so they read the new values. The task definition only references the secrets, so the app
-   apply does not change it:
-
-   ```bash
-   aws ecs update-service --cluster llmgw-cluster --service llmgw-litellm --force-new-deployment
-   ```
-
-Do step 3 right after step 2: until the tasks are replaced, they hold the old database password and Redis token,
-and new connections from them fail. Clients that call the API with the master key need the new value; virtual
-keys are not affected.
-
-The salt key is never rotated, and changing `generated_secrets_version` does not touch it: LiteLLM uses it to
-encrypt the provider credentials stored in its database, and a new salt key would make them unreadable.
+The foundation generates the master key, the salt key, the UI password, the Redis auth token and the database
+password once, at the first deploy; the stack never rotates them. The salt key must never change: LiteLLM uses it
+to encrypt the provider credentials stored in its database, and a new salt key would make them unreadable.
 
 ## Temporary DEBUG logging
 

@@ -7,12 +7,14 @@
 # collides with a secret pending deletion.
 #
 # Ephemeral values are regenerated on every run, but a write-only argument is
-# sent only when its resource is created or its version changes. Bumping
-# generated_secrets_version therefore rotates the master key, UI password,
-# Redis token and database password together; the salt key never rotates.
+# sent only when its resource is created or its version changes.
 
 locals {
   secret_recovery_window_days = 7
+
+  # Write-only version of every generated value: the values are written once,
+  # at creation, and never changed by this stack.
+  generated_secrets_wo_version = 1
 }
 
 # LiteLLM master key: the break-glass admin credential. The UI gets its own
@@ -34,13 +36,13 @@ resource "aws_secretsmanager_secret" "master_key" {
 resource "aws_secretsmanager_secret_version" "master_key" {
   secret_id                = aws_secretsmanager_secret.master_key.id
   secret_string_wo         = "sk-${ephemeral.random_password.master_key.result}"
-  secret_string_wo_version = var.generated_secrets_version
+  secret_string_wo_version = local.generated_secrets_wo_version
 }
 
 # The salt key encrypts provider credentials stored in LiteLLM's database.
-# NEVER rotate it: rotation makes those stored credentials unreadable. Its
-# version is ignored after creation, so generated_secrets_version (or any later
-# edit) never re-sends a new value.
+# NEVER change it: a new value makes those stored credentials unreadable. Its
+# value and version are ignored after creation, so no later edit re-sends a
+# new value.
 ephemeral "random_password" "salt_key" {
   length  = 21
   special = false
@@ -56,7 +58,7 @@ resource "aws_secretsmanager_secret" "salt_key" {
 resource "aws_secretsmanager_secret_version" "salt_key" {
   secret_id                = aws_secretsmanager_secret.salt_key.id
   secret_string_wo         = "sk-${ephemeral.random_password.salt_key.result}"
-  secret_string_wo_version = var.generated_secrets_version
+  secret_string_wo_version = local.generated_secrets_wo_version
 
   lifecycle {
     ignore_changes = [secret_string_wo, secret_string_wo_version]
@@ -80,7 +82,7 @@ resource "aws_secretsmanager_secret" "redis_auth" {
 resource "aws_secretsmanager_secret_version" "redis_auth" {
   secret_id                = aws_secretsmanager_secret.redis_auth.id
   secret_string_wo         = ephemeral.random_password.redis_auth.result
-  secret_string_wo_version = var.generated_secrets_version
+  secret_string_wo_version = local.generated_secrets_wo_version
 
   # A replaced replication group is created with this run's token; re-write
   # the secret in the same run so the two never diverge.
@@ -106,7 +108,7 @@ resource "aws_secretsmanager_secret" "ui_password" {
 resource "aws_secretsmanager_secret_version" "ui_password" {
   secret_id                = aws_secretsmanager_secret.ui_password.id
   secret_string_wo         = ephemeral.random_password.ui_password.result
-  secret_string_wo_version = var.generated_secrets_version
+  secret_string_wo_version = local.generated_secrets_wo_version
 }
 
 # The full DATABASE_URL, so consumers need one secret, not credentials plus
@@ -122,7 +124,7 @@ resource "aws_secretsmanager_secret" "database_url" {
 resource "aws_secretsmanager_secret_version" "database_url" {
   secret_id                = aws_secretsmanager_secret.database_url.id
   secret_string_wo         = "postgresql://${local.db_username}:${ephemeral.random_password.db.result}@${aws_db_instance.database.endpoint}/${local.db_name}"
-  secret_string_wo_version = var.generated_secrets_version
+  secret_string_wo_version = local.generated_secrets_wo_version
 
   # A replaced database (new endpoint, created with this run's password) gets
   # its URL re-written in the same run. Only replacement changes the id, so an

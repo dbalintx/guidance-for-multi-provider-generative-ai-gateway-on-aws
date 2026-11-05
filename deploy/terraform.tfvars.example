@@ -43,7 +43,6 @@ tags            = {}      # your own tags, merged into the defaults
 # extra_data_ingress_cidrs              = []
 
 # --- foundation: data stores ---
-# generated_secrets_version     = 1     # bump to rotate master key, UI password, Redis token, DB password (never the salt key); then redeploy the app
 # destroy_data_without_snapshot = false # throwaway deployments only: destroy the DB with no final snapshot and delete its backups
 
 # --- foundation: demo Client VPN (trials only; run deploy/setup-vpn.sh certs first) ---
