@@ -95,11 +95,12 @@ What it is:
   `deploy/.generated/<deployment_name>-foundation-outputs.tfvars.json` is on
   this machine (or set `FOUNDATION_OUTPUTS`). The ECS app may run alongside:
   both share the database and Redis like more replicas of one gateway.
-- An EKS cluster in the gateway's region and VPC (its nodes in subnets with a
-  route to ghcr.io and AWS APIs, for example the foundation's private subnets
-  with the NAT gateway), with the EKS Pod Identity Agent and EC2 nodes (EKS Auto
-  Mode or managed node groups) that fit two pods requesting 1 vCPU and 2 GiB
-  each, plus the migration Job (1 vCPU, 2 GiB).
+- An EKS cluster (Kubernetes 1.30 or later, for the `preStop` sleep action) in
+  the gateway's region and VPC, with nodes in subnets that reach ghcr.io and
+  AWS APIs (for example the foundation's private subnets with the NAT
+  gateway), the EKS Pod Identity Agent, and EC2 capacity (EKS Auto Mode or a
+  managed node group) for two pods requesting 1 vCPU and 2 GiB each plus the
+  migration Job (1 vCPU, 2 GiB).
 - `kubectl` with its current context on that cluster
   (`aws eks update-kubeconfig --name <cluster> --region <region>`) and
   permission to create a namespace and the objects in `manifests/`.
