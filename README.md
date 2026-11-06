@@ -279,7 +279,7 @@ identity provider and DEBUG logging also print a warning on every plan. To repor
 | --- | --- |
 | [`terraform/foundation`](terraform/foundation) | Long-lived network and data: VPC, RDS, Redis, Secrets Manager, config bucket, optional demo Client VPN. |
 | [`terraform/app`](terraform/app) | Load balancer, WAF, ECS service and migration task, LiteLLM configuration, IAM, logs, alarms. |
-| [`terraform/modules`](terraform/modules/README.md) | Child modules: [observability](terraform/modules/observability/README.md), [rollout](terraform/modules/rollout/README.md) and vpn. |
+| [`terraform/modules`](terraform/modules/README.md) | Child modules: observability, rollout and vpn. |
 | [`deploy`](deploy) | Deployment scripts and the `terraform.tfvars.example` input file. |
 | [`docs`](docs) | [Deployment guide](docs/deployment.md) and [configuration reference](docs/configuration.md). |
 | [`examples/agentcore`](examples/agentcore/README.md) | An agent on Amazon Bedrock AgentCore Runtime that does all of its inference through the gateway. |
