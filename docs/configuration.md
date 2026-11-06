@@ -5,6 +5,9 @@ declares makes the other print a `Value for undeclared variable` warning; that i
 `variables.tf` files, which remain authoritative; regenerate them after a change (for example with
 [terraform-docs](https://terraform-docs.io/)). Validation rules are in the `variables.tf` files.
 
+A `config_override_file` and other configuration content that you create and upload are "Your Content" as defined
+in the [AWS Customer Agreement](https://aws.amazon.com/agreement/). AWS does not claim ownership of it.
+
 ## Shared inputs
 
 Read by both `terraform/foundation` and `terraform/app` (`kms_key_arn` reaches the app as a foundation output).
@@ -30,7 +33,7 @@ Descriptions combine both roots.
 | `public_subnet_ids` | `list(string)` | `[]` | Bring-your-own VPC, public mode only: public subnets in at least two Availability Zones for the internet-facing entry point. |
 | `vpc_cidr` | `string` | `"10.0.0.0/16"` | IPv4 CIDR for the created VPC. Ignored for a bring-your-own VPC. |
 | `create_vpc_endpoints_in_existing_vpc` | `bool` | `false` | Bring-your-own VPC only: create the VPC endpoints in it (the S3 gateway endpoint; interface endpoints follow create_interface_endpoints / disable_outbound_network_access). Leave false when the VPC already has them. |
-| `create_interface_endpoints` | `bool` | `false` | Create the interface VPC endpoints (Secrets Manager, ECR, CloudWatch Logs, STS, Bedrock runtime) even though the VPC has internet egress. Always on in no-internet mode. Each endpoint costs per hour per Availability Zone; with a NAT gateway the traffic works without them. |
+| `create_interface_endpoints` | `bool` | `false` | Create the interface VPC endpoints (Secrets Manager, ECR, CloudWatch Logs, STS, Bedrock runtime) even though the VPC has internet egress. Created automatically in no-internet mode. Each endpoint costs per hour per Availability Zone; with a NAT gateway the traffic works without them. |
 | `egress_proxy_configured` | `bool` | `false` | An HTTPS proxy handles outbound traffic from the private subnets. Only suppresses the no-egress warning; the proxy itself is configured on the gateway. |
 | `extra_data_ingress_security_group_ids` | `list(string)` | `[]` | Extra security groups admitted to RDS and Redis, for any non-ECS client of the data stores (for example pods on an EKS cluster). |
 | `extra_data_ingress_cidrs` | `list(string)` | `[]` | Extra CIDR ranges admitted to RDS and Redis, for any non-ECS client of the data stores. |
@@ -50,16 +53,16 @@ Descriptions combine both roots.
 | `allow_insecure_http` | `bool` | `false` | Private trials only: serve plain HTTP without a certificate. Rejected in public mode. |
 | `hosted_zone_id` | `string` | `null` | Optional Route 53 hosted zone; with record_name, creates an alias to the ALB. Set both or neither. |
 | `record_name` | `string` | `null` | Optional DNS name (for example llm.example.com) created in hosted_zone_id. Set both or neither. |
-| `identity_provider` | `object` | `null` | Optional OIDC identity provider. When set, the ALB requires sign-in in front of the LiteLLM UI paths — unconditionally, in private and public mode alike. The client secret is given as a Secrets Manager ARN; its value never passes through variables. |
+| `identity_provider` | `object` | `null` | Optional OIDC identity provider. When set, the ALB requires sign-in in front of the LiteLLM UI paths — unconditionally, in private and public mode alike. The client secret is given as a Secrets Manager ARN; its value does not pass through variables. |
 | `litellm_license_secret_arn` | `string` | `null` | Optional Secrets Manager ARN of the LiteLLM Enterprise licence. Null runs reduced mode (trials and exploration only). |
-| `client_cidrs` | `list(string)` | `[]` | Private mode: CIDR ranges allowed to reach the ALB (VPN, Direct Connect, Transit Gateway). Empty means the VPC CIDR only — never all of RFC 1918. |
+| `client_cidrs` | `list(string)` | `[]` | Private mode: CIDR ranges allowed to reach the ALB (VPN, Direct Connect, Transit Gateway). Empty means the VPC CIDR only, not all of RFC 1918. |
 | `client_security_group_ids` | `list(string)` | `[]` | Extra security groups allowed to reach the ALB. The foundation's demo Client VPN is admitted automatically via vpn_security_group_id. |
 | `log_level` | `string` | `"INFO"` | LITELLM_LOG level. DEBUG writes prompts and provider payloads to the logs: temporary troubleshooting only; the plan warns while it is on. |
 | `config_override_file` | `string` | `null` | Optional YAML file merged over the rendered LiteLLM config: general_settings, litellm_settings and router_settings are merged key by key (your keys win); model_list and every other top-level key are taken from the file. |
 | `bedrock_model_allowlist` | `list(string)` | `[]` | Optional Bedrock model IDs the task role may invoke. Empty = any model and inference profile in the allowed regions (model access is still governed in Bedrock and in LiteLLM teams). |
 | `bedrock_region_allowlist` | `list(string)` | `[]` | Optional regions the task role may invoke Bedrock in. Empty = any region, so cross-region inference profiles and new regions keep working. |
 | `cross_account_role_arns` | `list(string)` | `[]` | Roles in other accounts LiteLLM may assume for Bedrock models or guardrails, listed explicitly. A role/* wildcard is rejected. |
-| `provider_secret_arns` | `map(string)` | `{}` | Environment variable name => Secrets Manager ARN (optionally with the :json-key:: suffix) for non-Bedrock provider API keys. Values never pass through variables or state. Names the stack sets itself are rejected. |
+| `provider_secret_arns` | `map(string)` | `{}` | Environment variable name => Secrets Manager ARN (optionally with the :json-key:: suffix) for non-Bedrock provider API keys. Values do not pass through variables or state. Names the stack sets itself are rejected. |
 | `extra_environment` | `map(string)` | `{}` | Additional non-secret environment variables for LiteLLM (for example SSO client IDs, PROXY_BASE_URL, HTTPS_PROXY). Names the stack sets itself are rejected; set the log level with log_level. |
 | `alarm_email` | `string` | `null` | Optional email address subscribed to the alarm topic (confirm the subscription from the email AWS sends). |
 | `image_uri` | `string` | `null` | Override of the LiteLLM image URI, for air-gapped deployments pulling from a private registry (e.g. a copy made with deploy/mirror-image.sh). For a private ECR URI (`<account>.dkr.ecr.<region>.amazonaws.com/<repository>...`) the execution role gets pull rights on that repository only; other registries get no extra permissions. null uses the pinned upstream image. |
@@ -80,7 +83,7 @@ else to set:
 
 `deploy/deploy.sh` saves every foundation output (the list above, plus `kms_key_arn`) to
 `deploy/.generated/<deployment_name>-foundation-outputs.tfvars.json`, and prints the app's `service_url`. The
-secret outputs are Secrets Manager ARNs, never values.
+secret outputs are Secrets Manager ARNs, not values.
 
 | App output | Description |
 | --- | --- |

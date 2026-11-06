@@ -1,9 +1,10 @@
 # Guidance for Multi-Provider Generative AI Gateway on AWS
 
-This Guidance runs the open-source [LiteLLM](https://docs.litellm.ai/) proxy as a private, highly available gateway
-in your AWS account, deployed with Terraform. Applications call one OpenAI-compatible endpoint; LiteLLM routes the
-calls to Amazon Bedrock and other model providers, and handles virtual API keys, teams, budgets, rate limits, spend
-tracking and its admin UI.
+This Guidance runs the open-source [LiteLLM](https://docs.litellm.ai/) proxy (MIT License; its `enterprise/`
+directory is under a separate licence) as a private gateway, designed for high availability, in your AWS account,
+deployed with Terraform. Applications call one OpenAI-compatible endpoint; LiteLLM routes the calls to Amazon
+Bedrock and other model providers, and handles virtual API keys, teams, budgets, rate limits, spend tracking and
+its admin UI.
 
 ## Table of contents
 
@@ -25,7 +26,7 @@ tracking and its admin UI.
 ## Project Overview
 
 The Guidance hosts the official, unmodified LiteLLM container image. It adds no code to the request path; it
-provides the AWS infrastructure, secure defaults and deployment scripts around it. Everything LiteLLM itself does
+provides the AWS infrastructure, security-focused defaults and deployment scripts around it. Everything LiteLLM itself does
 (models, keys, teams, budgets, guardrails, SSO) is described in the [LiteLLM documentation](https://docs.litellm.ai/).
 
 The foundation creates an empty AWS CloudFormation stack (`<deployment_name>-tracking-stack`) whose description
@@ -82,7 +83,7 @@ flowchart LR
 4. Amazon RDS for PostgreSQL stores keys, teams, budgets, spend and models added through the UI or API. Amazon
    ElastiCache (Redis OSS) holds shared rate-limit and routing state and the response cache.
 5. Generated credentials (master key, salt key, UI password, database URL, Redis token) live only in AWS Secrets
-   Manager and reach the tasks as secret references; they never appear in Terraform variables or state.
+   Manager and reach the tasks as secret references; the Guidance is designed to keep them out of Terraform variables and state.
 6. Terraform renders the LiteLLM configuration and stores it in Amazon S3; request metadata (not prompts or
    responses) is logged to S3; Amazon CloudWatch holds logs, alarms and a dashboard, with alarm notifications
    through Amazon SNS.
@@ -108,7 +109,7 @@ flowchart LR
 | [AWS Key Management Service (KMS)](https://aws.amazon.com/kms/) | Encryption keys for the data stores, logs and alarm topic. |
 | [AWS Certificate Manager (ACM)](https://aws.amazon.com/certificate-manager/) | TLS certificate for the load balancer. |
 | [Amazon Route 53](https://aws.amazon.com/route53/) | Optional DNS alias record for the gateway. |
-| [AWS WAF](https://aws.amazon.com/waf/) | Protects the load balancer in public mode. |
+| [AWS WAF](https://aws.amazon.com/waf/) | Helps protect the load balancer in public mode. |
 | [AWS Client VPN](https://aws.amazon.com/vpn/client-vpn/) | Optional demo access path for trial deployments. |
 | [Amazon Elastic Container Registry (ECR)](https://aws.amazon.com/ecr/) | Optional private copy of the LiteLLM image for deployments without internet access. |
 | [AWS CloudFormation](https://aws.amazon.com/cloudformation/) | Empty stack that counts deployments of this Guidance. |
@@ -247,13 +248,13 @@ identity provider and DEBUG logging also print a warning on every plan. To repor
 
 ### Container Security
 
-- **Pinned image**: the official LiteLLM image is pinned by digest, so every task runs exactly the reviewed image.
+- **Pinned image**: the official LiteLLM image is pinned by digest, so tasks run the reviewed image even if its tag is re-pushed.
 - **Mirroring**: `deploy/mirror-image.sh` verifies the upstream image signature before copying it into Amazon ECR.
 
 ### Secrets Management
 
 - **AWS Secrets Manager**: credentials are generated at the first deployment and written with Terraform
-  write-only arguments, so they never appear in Terraform variables, plans or state. Secrets you add are passed as
+  write-only arguments, which are designed to keep them out of Terraform variables, plans and state. Secrets you add are passed as
   Secrets Manager ARNs; only the identity provider client secret reaches the Terraform state (see
   [Identity provider](docs/deployment.md#identity-provider)).
 

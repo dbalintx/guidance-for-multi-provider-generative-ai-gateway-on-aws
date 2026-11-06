@@ -46,7 +46,7 @@ This page takes you from an empty AWS account to a verified gateway. Every input
   it internet-facing and attaches AWS WAF.
 - **LiteLLM licence.** `litellm_license_secret_arn` enables the
   [LiteLLM Enterprise features](https://docs.litellm.ai/docs/enterprise). Without it LiteLLM runs its
-  open-source feature set.
+  open-source feature set (MIT License).
 - **Identity provider.** `identity_provider` makes the load balancer require OpenID Connect (OIDC) sign-in before
   it serves the LiteLLM UI. See [Identity provider](#identity-provider).
 
@@ -143,7 +143,7 @@ deploy/setup-vpn.sh certs --name llmgw --region <region>
 
 The script creates a local CA, a server certificate and one shared client certificate (RSA 2048; Client VPN
 accepts only RSA 1024 or 2048) under `~/.llm-gateway-vpn/<name>/`, imports them into ACM and prints the
-certificate ARNs. Private keys stay on your machine and in ACM, never in Terraform state.
+certificate ARNs. The private keys are kept on your machine and in ACM, not in Terraform state.
 
 **Settings** in `deploy/terraform.tfvars`:
 
@@ -372,7 +372,7 @@ deploy/smoke-test.sh --key-secret-arn "$(jq -r .master_key_secret_arn "$OUT")" <
 ```
 
 It checks liveliness, database connectivity, that a call without a key is refused, an authenticated call, and
-that the schema is migrated. The key is fetched at runtime and never printed. Add `--model <model_name>` once a
+that the schema is migrated. The script fetches the key at runtime and does not print it. Add `--model <model_name>` once a
 model exists to run one completion; it checks for HTTP 200 only. `--insecure` skips TLS verification;
 `--help` lists every option.
 
@@ -406,6 +406,9 @@ Provider options are in the
 invoke any Bedrock model and inference profile in any Region; `bedrock_model_allowlist`,
 `bedrock_region_allowlist` and `cross_account_role_arns` narrow or extend that. Credentials for other providers
 reach the tasks through `provider_secret_arns` and are referenced as `os.environ/<NAME>`.
+
+Models, keys, configuration files and other content that you create and upload are "Your Content" as defined in
+the [AWS Customer Agreement](https://aws.amazon.com/agreement/). AWS does not claim ownership of it.
 
 Then call it like any OpenAI-compatible endpoint:
 

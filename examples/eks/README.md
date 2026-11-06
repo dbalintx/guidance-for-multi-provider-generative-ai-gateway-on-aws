@@ -14,10 +14,10 @@ What it is:
 - a small Terraform root module (`terraform/`, AWS provider only) for the pods'
   IAM role, its EKS Pod Identity association, a request-log bucket and the
   rendered LiteLLM config;
-- bring-your-own cluster: the example never creates or changes a cluster, its
+- bring-your-own cluster: the example does not create or change a cluster, its
   add-ons, node groups or a load-balancer controller.
 
-```
+```text
  kubectl port-forward            EKS cluster (in the gateway's VPC)
  (or your own ingress) ─────►  ┌─────────────────────────────────────────┐
                                │ namespace litellm                       │
@@ -45,15 +45,15 @@ What it is:
   same way `terraform/app/config.tf` does. The ConfigMap is named after the
   config's hash and `LITELLM_CONFIG_SHA` carries the hash, so a config change
   rolls the pods and every ReplicaSet keeps the config it was rolled out with.
-  Fetching the ECS deployment's object from the config bucket was rejected: it
-  would make this example depend on the ECS app being deployed, give the pods
+  The example does not fetch the ECS deployment's object from the config bucket:
+  that would make this example depend on the ECS app being deployed, give the pods
   read access to the bucket and tie them to the ECS deployment's request-log
   bucket. The request logs go to a bucket of this example instead.
 - **Secrets.** `scripts/deploy.sh` reads the five generated values (database
   URL, master key, salt key, Redis token, UI password) from Secrets Manager
   and writes them into the Kubernetes Secret `litellm-secrets`, with
-  server-side apply (no copy in a last-applied annotation). They are never
-  printed and never passed as process arguments.
+  server-side apply (no copy in a last-applied annotation). The scripts do
+  not print them or pass them as process arguments.
 - **Migration gate.** As on ECS, the pods run with `DISABLE_SCHEMA_UPDATE=true`
   and only a one-off migration (`manifests/migrate-job.yaml`, same image,
   environment and config, `--skip_server_startup`) updates the schema.
@@ -66,8 +66,8 @@ What it is:
   ConfigMap and the secrets are a Kubernetes Secret, so no S3 read and no
   Secrets Manager access. The trust policy admits only `pods.eks.amazonaws.com`
   for this account and cluster; the association binds the role to one
-  namespace and service account. Pod Identity was chosen over IAM roles for
-  service accounts (IRSA) because it needs no per-cluster OIDC identity
+  namespace and service account. The example uses Pod Identity rather than IAM
+  roles for service accounts (IRSA) because it needs no per-cluster OIDC identity
   provider in IAM, no cluster-specific trust policy and no service-account
   annotation; the binding is an EKS API object that Terraform manages with the
   AWS provider. It needs the EKS Pod Identity Agent (built into EKS Auto Mode,

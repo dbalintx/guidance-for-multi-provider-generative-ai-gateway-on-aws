@@ -37,8 +37,8 @@ ARN) and does not modify the gateway's stacks.
   API-key credential provider points at that secret; the agent obtains the key
   per request by exchanging the workload access token AgentCore Runtime issues
   for the invocation. The key is not in environment variables, the code bundle,
-  Terraform variables or Terraform state, and the runtime never gets the master
-  key.
+  Terraform variables or Terraform state, and the runtime does not receive the
+  master key.
 - **Network.** The runtime runs in the gateway's VPC (VPC network mode), so it
   reaches a private, internal gateway. Its security group allows the gateway
   port towards the gateway's CIDR and HTTPS towards AWS APIs (through the VPC's
@@ -47,7 +47,10 @@ ARN) and does not modify the gateway's stacks.
 - **Deployment.** Direct code deployment: `scripts/build.sh` builds a zip of
   the agent and its dependencies for the runtime's platform (Linux arm64,
   Python 3.13); Terraform uploads it to S3 and creates the runtime from it. No
-  container build is needed.
+  container build is needed. Agent code, configuration and other content that
+  you create and upload are "Your Content" as defined in the
+  [AWS Customer Agreement](https://aws.amazon.com/agreement/). AWS does not
+  claim ownership of it.
 
 ## Prerequisites
 
@@ -194,7 +197,7 @@ terraform -chdir=terraform test
   visible to anyone who can describe the runtime. The credential provider keeps
   the key in a secret that only the runtime role can read, behind a per-request
   workload access token. The secret is created and owned by this example
-  (`EXTERNAL` secret source), so the key never enters Terraform state, and can
+  (`EXTERNAL` secret source), so the key is kept out of Terraform state, and can
   be rotated without redeploying.
 - **Fronting the agent with LiteLLM (Agents).** This example governs the
   agent's outbound model calls. To also govern who may call the agent, consider
