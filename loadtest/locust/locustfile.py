@@ -15,8 +15,9 @@ Configuration (environment):
   SPAWN_RATE       users started per second between steps, default 5
   REQUEST_LOG_DIR  directory for the per-request JSONL log, default ./results
 
-Every prompt starts with a random UUID, so the gateway's response cache never
-answers (identical prompts would measure Redis, not the gateway).
+Every prompt starts with a random UUID, so that prompts are not repeated and
+the gateway's response cache is bypassed (identical prompts would load Redis,
+not the gateway).
 
 Locust statistics: "chat stream" times the whole stream (first byte to
 [DONE]); "chat" times the whole response. Time to first token, chunk counts and

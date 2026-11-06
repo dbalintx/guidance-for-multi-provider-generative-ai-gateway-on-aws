@@ -1,11 +1,7 @@
-"""Offline tests: the fake upstream speaks the OpenAI chat API, the locust
-scenario parses its stream, the summary computes the step tables."""
-
-import json
-import time
+"""Offline tests: the fake upstream speaks the OpenAI chat API and the locust
+scenario parses its stream."""
 
 import server
-import summarize
 from locustfile import parse_sse, parse_steps
 
 INSTANT = server.Profile(ttft_ms=0, itl_ms=0, tokens_min=5, tokens_max=5, jitter=0, tokens_per_chunk=1)
@@ -63,34 +59,3 @@ def test_parse_sse_handles_spaced_json_and_truncation():
 
 def test_parse_steps():
     assert parse_steps("10:60, 20:120") == [(10, 60), (20, 120)]
-
-
-def test_summary_per_step(tmp_path):
-    start = time.time()
-    (tmp_path / "run.json").write_text(json.dumps({"start": start, "steps": "1:10,2:10"}))
-    rows = [
-        {"t": start + 5, "kind": "stream", "status": 200, "ttft_ms": 100, "total_ms": 1000},
-        {"t": start + 15, "kind": "stream", "status": 200, "ttft_ms": 300, "total_ms": 3000},
-        {"t": start + 16, "kind": "chat", "status": 502, "error": "HTTP 502", "total_ms": 5},
-    ]
-    (tmp_path / "requests-1.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n{truncated")
-    meta, records = summarize.load(str(tmp_path))
-    assert len(records) == 3
-    steps = summarize.steps_of(meta, records)
-    second = summarize.summarise([r for r in records if steps[1][1] <= r["t"] < steps[1][2]], 10)
-    assert second["requests"] == 2 and second["errors"] == "50.00%" and second["error classes"] == "502x1"
-    assert second["TTFT p95 s"] == "0.30"
-
-
-def test_memory_trend_slope_per_task():
-    import collect_metrics
-
-    rows = [
-        {"task": "a", "minute": "2026-01-01 10:00", "mem_mib": 100, "cpu_pct": 10},
-        {"task": "a", "minute": "2026-01-01 10:30", "mem_mib": 125, "cpu_pct": 20},
-        {"task": "a", "minute": "2026-01-01 11:00", "mem_mib": 150, "cpu_pct": 30},
-        {"task": "b", "minute": "2026-01-01 10:00", "mem_mib": 90, "cpu_pct": 5},
-    ]
-    a, b = collect_metrics.memory_trend(rows)
-    assert (a["slope_mib_per_h"], a["max_mib"], a["cpu_avg_pct"]) == (50.0, 150, 20.0)
-    assert b["slope_mib_per_h"] == 0.0

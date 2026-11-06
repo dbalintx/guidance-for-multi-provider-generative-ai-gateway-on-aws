@@ -5,6 +5,8 @@
 # GATEWAY_URL (set by driver.sh) and the scenario settings of
 # locust/locustfile.py (STEPS, STREAM_RATIO, ...). Without STEPS, USERS,
 # SPAWN_RATE and RUN_TIME apply. PROCESSES: locust processes (default: vCPUs).
+# TOOL=compare runs bedrock_compare/compare.py instead (MODEL = the gateway's
+# Bedrock model, BEDROCK_MODEL, SAMPLES, CONCURRENCY, MAX_TOKENS, MAX_RPM).
 # Results are synced to s3://$ARTIFACTS_BUCKET/results/<run-name>/ every
 # minute and at the end, where a DONE file marks completion.
 set -euo pipefail
@@ -22,8 +24,9 @@ if pgrep -f /opt/loadtest/venv/bin/locust >/dev/null; then
 fi
 until [ -f /opt/loadtest/ready ]; do echo "waiting for bootstrap"; sleep 10; done
 aws s3 cp --quiet "s3://${ARTIFACTS_BUCKET}/scenario/locustfile.py" locustfile.py
+aws s3 cp --quiet "s3://${ARTIFACTS_BUCKET}/scenario/compare.py" compare.py
 
-# The key reaches locust through its environment only (never argv or logs).
+# The key is passed to locust through its environment only (not argv or logs).
 API_KEY="$(aws secretsmanager get-secret-value --secret-id "$API_KEY_SECRET_ID" --query SecretString --output text)"
 export API_KEY
 export REQUEST_LOG_DIR="${DIR}/results"
@@ -42,7 +45,17 @@ if [ -z "${STEPS:-}" ]; then
 fi
 
 set +e
-/opt/loadtest/venv/bin/locust "${args[@]}" >results/locust.log 2>&1
+if [ "${TOOL:-locust}" = compare ]; then
+  TOKEN="$(curl -s -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')"
+  REGION="$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region)"
+  # Gateway against direct Bedrock (bedrock_compare/compare.py).
+  /opt/loadtest/venv/bin/python compare.py --gateway-url "$GATEWAY_URL" --gateway-model "${MODEL:?}" \
+    --bedrock-model "${BEDROCK_MODEL:?}" --region "$REGION" \
+    --samples "${SAMPLES:-300}" --concurrency "${CONCURRENCY:-1,8}" --max-tokens "${MAX_TOKENS:-64}" --max-rpm "${MAX_RPM:-0}" \
+    --out results >results/compare.log 2>&1
+else
+  /opt/loadtest/venv/bin/locust "${args[@]}" >results/locust.log 2>&1
+fi
 status=$?
 set -e
 echo "$status" >results/DONE

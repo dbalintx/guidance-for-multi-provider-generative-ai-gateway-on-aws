@@ -61,7 +61,7 @@ variable "fake_profile" {
 }
 
 variable "fake_task_cpu" {
-  description = "CPU units per fake upstream task (1024 = 1 vCPU); it runs two server processes per vCPU. Size it so the fake upstream never limits the test (check its CPU in Container Insights)."
+  description = "CPU units per fake upstream task (1024 = 1 vCPU); it runs two server processes per vCPU. Size it so the fake upstream does not limit the test (check its CPU in Container Insights)."
   type        = number
   default     = 2048
   validation {
@@ -98,6 +98,18 @@ variable "locust_version" {
   description = "locust version the driver installs."
   type        = string
   default     = "2.47.0"
+}
+
+variable "bedrock_model_ids" {
+  description = "Foundation models (in-region, on-demand) the driver may call directly, for the gateway-overhead comparison (bedrock_compare/). Empty: no Bedrock access."
+  type        = list(string)
+  default     = []
+}
+
+variable "boto3_version" {
+  description = "boto3 version the driver installs (bedrock_compare/)."
+  type        = string
+  default     = "1.40.0"
 }
 
 variable "tags" {
