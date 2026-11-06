@@ -1,4 +1,4 @@
-# Input and output reference
+# Deployment configuration reference
 
 `deploy/deploy.sh` passes one file, `deploy/terraform.tfvars`, to both root modules. A variable that only one root
 declares makes the other print a `Value for undeclared variable` warning; that is expected. The tables follow the
@@ -54,8 +54,8 @@ Descriptions combine both roots.
 | `litellm_license_secret_arn` | `string` | `null` | Optional Secrets Manager ARN of the LiteLLM Enterprise licence. Null runs reduced mode (trials and exploration only). |
 | `client_cidrs` | `list(string)` | `[]` | Private mode: CIDR ranges allowed to reach the ALB (VPN, Direct Connect, Transit Gateway). Empty means the VPC CIDR only — never all of RFC 1918. |
 | `client_security_group_ids` | `list(string)` | `[]` | Extra security groups allowed to reach the ALB. The foundation's demo Client VPN is admitted automatically via vpn_security_group_id. |
-| `log_level` | `string` | `"INFO"` | LITELLM_LOG level. DEBUG writes prompts and provider payloads to the logs (verified on 1.82.3 and 1.106.0): temporary troubleshooting only — the plan warns while it is on. |
-| `config_override_file` | `string` | `null` | Optional YAML file merged over the rendered LiteLLM config: model_list entries are appended; general_settings, litellm_settings and router_settings keys override the base. |
+| `log_level` | `string` | `"INFO"` | LITELLM_LOG level. DEBUG writes prompts and provider payloads to the logs: temporary troubleshooting only; the plan warns while it is on. |
+| `config_override_file` | `string` | `null` | Optional YAML file merged over the rendered LiteLLM config: general_settings, litellm_settings and router_settings are merged key by key (your keys win); model_list and every other top-level key are taken from the file. |
 | `bedrock_model_allowlist` | `list(string)` | `[]` | Optional Bedrock model IDs the task role may invoke. Empty = any model and inference profile in the allowed regions (model access is still governed in Bedrock and in LiteLLM teams). |
 | `bedrock_region_allowlist` | `list(string)` | `[]` | Optional regions the task role may invoke Bedrock in. Empty = any region, so cross-region inference profiles and new regions keep working. |
 | `cross_account_role_arns` | `list(string)` | `[]` | Roles in other accounts LiteLLM may assume for Bedrock models or guardrails, listed explicitly. A role/* wildcard is rejected. |

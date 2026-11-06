@@ -5,20 +5,45 @@ in your AWS account, deployed with Terraform. Applications call one OpenAI-compa
 calls to Amazon Bedrock and other model providers, and handles virtual API keys, teams, budgets, rate limits, spend
 tracking and its admin UI.
 
+## Table of contents
+
+- [Project Overview](#project-overview)
+- [Architecture](#architecture)
+- [AWS Services in this Guidance](#aws-services-in-this-guidance)
+- [Deployment Options](#deployment-options)
+- [Cost](#cost)
+  - [Cost Considerations](#cost-considerations)
+  - [Cost Components](#cost-components)
+  - [Key Factors Influencing AWS Infrastructure Costs](#key-factors-influencing-aws-infrastructure-costs)
+  - [Customer Responsibility](#customer-responsibility)
+  - [Sample Cost Tables](#sample-cost-tables)
+- [Security](#security)
+- [Repository structure](#repository-structure)
+- [Open source libraries](#open-source-libraries)
+- [Notices](#notices)
+
+## Project Overview
+
 The Guidance hosts the official, unmodified LiteLLM container image. It adds no code to the request path; it
-provides the AWS infrastructure, secure defaults and operating procedures around it.
+provides the AWS infrastructure, secure defaults and deployment scripts around it. Everything LiteLLM itself does
+(models, keys, teams, budgets, guardrails, SSO) is described in the [LiteLLM documentation](https://docs.litellm.ai/).
+
+The foundation creates an empty AWS CloudFormation stack (`<deployment_name>-tracking-stack`) whose description
+carries the Guidance's solution ID; AWS uses it to count deployments of this Guidance.
 
 ## Architecture
+
+The diagram shows the default, production-ready private deployment. The other
+[deployment options](#deployment-options) are described in [docs/deployment.md](docs/deployment.md).
 
 ```mermaid
 flowchart LR
     clients["Applications and admins"]
-    idp["OIDC identity provider<br/>(optional)"]
+    idp["OIDC identity provider"]
 
     subgraph account["Your AWS account"]
         subgraph vpc["VPC (created, or your own) - two Availability Zones"]
-            waf["AWS WAF<br/>(public mode)"]
-            alb["Application Load Balancer<br/>internal by default"]
+            alb["Internal Application<br/>Load Balancer (HTTPS)"]
             ecs["ECS Fargate service<br/>LiteLLM, 2-20 tasks"]
             migrate["One-off migration task"]
             rds[("RDS PostgreSQL<br/>Multi-AZ")]
@@ -34,7 +59,6 @@ flowchart LR
     providers["ghcr.io image, other<br/>model providers, licence server"]
 
     clients -- "VPN, Direct Connect or Transit Gateway" --> alb
-    clients -. "public mode" .-> waf -.-> alb
     alb -. "UI sign-in" .-> idp
     alb --> ecs
     ecs --> rds
@@ -47,12 +71,10 @@ flowchart LR
     ecs --> nat --> providers
 ```
 
-1. Clients reach an Application Load Balancer. By default it is internal: reachable only from the VPC and the
-   client ranges or security groups you admit (VPN, AWS Direct Connect, AWS Transit Gateway, or the optional demo
-   AWS Client VPN). In public mode the load balancer is internet-facing and AWS WAF is attached.
-2. HTTPS terminates on the load balancer with your AWS Certificate Manager (ACM) certificate. When an identity
-   provider is configured, the load balancer requires OIDC sign-in in front of the LiteLLM UI paths; API paths use
-   LiteLLM virtual keys.
+1. Clients reach an internal Application Load Balancer, admitted from the VPC and the client ranges or security
+   groups you list.
+2. HTTPS terminates on the load balancer with your AWS Certificate Manager (ACM) certificate. The load balancer
+   requires OIDC sign-in in front of the LiteLLM UI paths; API paths use LiteLLM virtual keys.
 3. LiteLLM runs on Amazon ECS on AWS Fargate (Graviton, two tasks minimum across two Availability Zones, CPU and
    memory target-tracking scaling up to 20 tasks). Every rollout first runs the database schema migration as a
    one-off task; the service only rolls if it succeeds, and the deployment circuit breaker rolls back a failed
@@ -68,60 +90,205 @@ flowchart LR
    LiteLLM licence server and the identity provider need outbound internet access through the NAT gateway (or
    your own egress).
 
-## Getting started
+## AWS Services in this Guidance
 
-Follow [docs/setup.md](docs/setup.md). The fastest path is the trial deployment: private, plain HTTP, reached
-through a demo Client VPN, ready in one `deploy/deploy.sh` run.
-
-## Documentation
-
-| Page | Contents |
+| AWS service | Use in this Guidance |
 | --- | --- |
-| [docs/setup.md](docs/setup.md) | Prerequisites, deployment options (trial, private, public), identity provider, demo VPN, first model, verification |
-| [docs/operations.md](docs/operations.md) | Upgrades, configuration changes, generated secrets, licence, monitoring, backups and teardown, troubleshooting |
-| [docs/reference.md](docs/reference.md) | Every Terraform input and output |
-| [terraform/modules/observability/README.md](terraform/modules/observability/README.md) | Alarms and dashboard |
-| [LiteLLM documentation](https://docs.litellm.ai/) | Everything LiteLLM itself does: models, keys, teams, budgets, guardrails, SSO |
+| [Amazon Bedrock](https://aws.amazon.com/bedrock/) | Foundation models that LiteLLM calls with its task role. |
+| [Amazon Elastic Container Service (ECS)](https://aws.amazon.com/ecs/) on [AWS Fargate](https://aws.amazon.com/fargate/) | Runs the LiteLLM containers and the schema migration task. |
+| [Elastic Load Balancing (Application Load Balancer)](https://aws.amazon.com/elasticloadbalancing/application-load-balancer/) | Entry point that terminates HTTPS and enforces UI sign-in. |
+| [Amazon Virtual Private Cloud (VPC)](https://aws.amazon.com/vpc/) | Isolated network with private subnets, NAT gateway, VPC endpoints and flow logs. |
+| [Amazon Relational Database Service (RDS)](https://aws.amazon.com/rds/) | PostgreSQL database for LiteLLM keys, teams, budgets, spend and models. |
+| [Amazon ElastiCache](https://aws.amazon.com/elasticache/) | Redis OSS for shared rate-limit, routing and cache state. |
+| [AWS Secrets Manager](https://aws.amazon.com/secrets-manager/) | Stores generated credentials and the secrets you provide. |
+| [Amazon Simple Storage Service (S3)](https://aws.amazon.com/s3/) | Holds the rendered LiteLLM configuration, request logs and load balancer access logs. |
+| [Amazon CloudWatch](https://aws.amazon.com/cloudwatch/) | Logs, metrics, alarms and the gateway dashboard. |
+| [Amazon Simple Notification Service (SNS)](https://aws.amazon.com/sns/) | Delivers alarm notifications. |
+| [AWS Identity and Access Management (IAM)](https://aws.amazon.com/iam/) | Least-privilege roles for the tasks, monitoring and flow logs. |
+| [AWS Key Management Service (KMS)](https://aws.amazon.com/kms/) | Encryption keys for the data stores, logs and alarm topic. |
+| [AWS Certificate Manager (ACM)](https://aws.amazon.com/certificate-manager/) | TLS certificate for the load balancer. |
+| [Amazon Route 53](https://aws.amazon.com/route53/) | Optional DNS alias record for the gateway. |
+| [AWS WAF](https://aws.amazon.com/waf/) | Protects the load balancer in public mode. |
+| [AWS Client VPN](https://aws.amazon.com/vpn/client-vpn/) | Optional demo access path for trial deployments. |
+| [Amazon Elastic Container Registry (ECR)](https://aws.amazon.com/ecr/) | Optional private copy of the LiteLLM image for deployments without internet access. |
+| [AWS CloudFormation](https://aws.amazon.com/cloudformation/) | Empty stack that counts deployments of this Guidance. |
 
-## Repository layout
+## Deployment Options
 
-| Path | Contents |
-| --- | --- |
-| `terraform/foundation` | Long-lived network and data: VPC (created or your own), RDS, Redis, Secrets Manager, config bucket, optional customer KMS key, optional demo Client VPN |
-| `terraform/app` | Load balancer, WAF, ECS service and migration task, rendered LiteLLM config, IAM, logs, alarms; destroyable and redeployable against a living foundation |
-| `terraform/modules` | Child modules: `observability`, `vpn`, `rollout` |
-| `deploy/` | `deploy.sh`, `undeploy.sh`, `smoke-test.sh`, `setup-vpn.sh`, `mirror-image.sh`, and the `terraform.tfvars.example` both roots read |
-| `examples/` | Integrations built on a deployed gateway |
-
-## Examples
-
-- [examples/agentcore/](examples/agentcore/): using the gateway from Amazon Bedrock AgentCore.
-- [examples/eks/](examples/eks/): running the gateway on an existing Amazon EKS cluster (a non-production starting point).
+The gateway deploys as a trial (private, plain HTTP, demo VPN; for testing only), as a private production
+deployment with HTTPS, DNS, an identity provider and a LiteLLM licence (recommended), or in public mode behind AWS
+WAF. Follow [docs/deployment.md](docs/deployment.md); every input and output is listed in
+[docs/configuration.md](docs/configuration.md).
 
 ## Cost
 
-You pay for the AWS resources the deployment runs and for model usage. The main hourly cost drivers are the NAT
-gateway, the Application Load Balancer, two or more Fargate tasks (2 vCPU, 4 GiB each), the Multi-AZ
-`db.t4g.large` RDS instance, two `cache.t3.micro` Redis nodes and, when enabled, interface VPC endpoints (per
-endpoint and Availability Zone), AWS WAF and the demo Client VPN (per association and connected client). Usage
-costs come from Amazon Bedrock and other model providers, CloudWatch Logs ingestion and storage (logs are retained
-for ten years) and S3. Estimate with the [AWS Pricing Calculator](https://calculator.aws/). The LiteLLM Enterprise
-licence, if you use one, is billed by its vendor.
+### Cost Considerations
+
+When implementing this Guidance on AWS, it is important to understand the factors that contribute to the overall
+cost. This section outlines the main cost components and the factors that influence them.
+
+### Cost Components
+
+The total cost of running this Guidance falls into two components:
+
+1. **Model provider costs**: charges for Amazon Bedrock and any other model provider the gateway calls, typically
+   based on the number of tokens processed, the model, and usage volume. The LiteLLM Enterprise licence, if you
+   use one, is billed by its vendor.
+2. **AWS infrastructure costs**: the AWS resources that host and operate the gateway.
+
+### Key Factors Influencing AWS Infrastructure Costs
+
+The actual cost depends on your configuration and usage patterns. The main factors are:
+
+1. **Compute**: the number of Fargate tasks. The service scales out under load (see
+   [Architecture](#architecture)), so sustained traffic adds tasks.
+2. **Database**: the fixed Multi-AZ RDS instance, and its storage, which grows with keys, teams, users, budgets
+   and per-request spend records.
+3. **Traffic patterns**: request and response sizes, requests and tokens per minute, concurrency, and the latency
+   of the model providers, which keeps connections and tasks busy.
+4. **Caching**: cached responses avoid model provider calls.
+5. **Logging**: CloudWatch log ingestion and storage; logs are retained for ten years, so storage grows every
+   month. DEBUG logging multiplies the volume.
+6. **Networking**: NAT gateway hours and data processing for calls to non-Bedrock providers, data transfer, and
+   optional interface VPC endpoints (billed per endpoint and Availability Zone).
+7. **Optional components**: AWS WAF in public mode and the demo Client VPN.
+
+This is not an exhaustive list, but it covers the main contributors.
+
+### Customer Responsibility
+
+While this Guidance provides default configurations, customers are responsible for:
+
+1. Configuring the Guidance for their use case and requirements.
+2. Monitoring and managing the costs of the AWS infrastructure.
+3. Managing and optimising the costs of their chosen model providers.
+
+We recommend creating a [budget](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-create.html)
+in [AWS Cost Explorer](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/) to help manage costs. Prices
+are subject to change; see the pricing page of each AWS service for full details.
+
+### Sample Cost Tables
+
+The following tables are estimates, made in November 2026 from published on-demand prices in the `us-east-1`
+(N. Virginia) Region, for one month (730 hours) of a private production deployment with the default sizing. They
+exclude model provider usage, taxes and the AWS Free Tier, and assume 100 GB of NAT data processing, 10 GB of
+CloudWatch log ingestion and 10 GB of S3 storage per month. Prices differ by Region; create your own estimate with
+the [AWS Pricing Calculator](https://calculator.aws/).
+
+#### Default deployment
+
+| AWS service | Dimensions | Cost, month [USD] |
+| --- | --- | --- |
+| Amazon VPC | 1 NAT gateway, 100 GB processed, 1 public IPv4 address | 41.00 |
+| Elastic Load Balancing | 1 Application Load Balancer, 1 LCU on average | 22.27 |
+| Amazon ECS on AWS Fargate | 2 tasks, Linux/ARM, 2 vCPU, 4 GiB memory, 20 GB ephemeral storage, 24 hours a day | 115.34 |
+| Amazon RDS for PostgreSQL | 1 `db.t4g.large` instance, Multi-AZ, 20 GB gp3 storage | 192.94 |
+| Amazon ElastiCache (Redis OSS) | 2 `cache.t3.micro` nodes | 24.82 |
+| AWS Secrets Manager | 5 generated secrets | 2.00 |
+| Amazon CloudWatch | 10 GB log ingestion and storage, about 22 alarms, 1 dashboard, Container Insights | 15.50 |
+| Amazon S3 | 10 GB standard storage, 100,000 PUT requests | 0.73 |
+| AWS KMS | 1 key for the alarm topic | 1.00 |
+| AWS Certificate Manager | 1 public certificate | free |
+| **TOTAL** | | **$415.60/month** |
+
+#### Optional components
+
+| AWS service | Dimensions | Cost, month [USD] |
+| --- | --- | --- |
+| Amazon VPC interface endpoints | 6 endpoints in 2 Availability Zones, excluding data processing | 87.60 |
+| AWS WAF and public IPv4 (public mode) | 1 web ACL, 4 rules, 1 million requests; 2 public IPv4 addresses for the load balancer | 16.90 |
+| AWS Client VPN (trial) | 1 subnet association, 1 client connected 176 hours | 81.80 |
+| Amazon Route 53 | 1 hosted zone (alias queries to the load balancer are free) | 0.50 |
+| AWS KMS | 1 customer managed key (`kms_key_arn`), replaces the alarm-topic key | 0.00 |
+| Additional Secrets Manager secrets | Identity provider client secret, licence, provider API keys | 0.40 each |
 
 ## Security
 
-The defaults are private networking, TLS on the load balancer, least-privilege IAM roles, encryption at rest for
-every data store, generated secrets kept out of Terraform state, message logging turned off and deletion
-protection on. Weakening them (public mode, plain HTTP, DEBUG logging) takes an explicit input; public mode without
-an identity provider and DEBUG logging also print a warning on every plan. See
-[CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) to report a security issue.
+When you build systems on AWS infrastructure, security responsibilities are shared between you and AWS. This
+[shared responsibility model](https://aws.amazon.com/compliance/shared-responsibility-model/) reduces your
+operational burden because AWS operates, manages, and controls the components including the host operating
+system, the virtualization layer, and the physical security of the facilities in which the services operate. For
+more information about AWS security, visit [AWS Cloud Security](https://aws.amazon.com/security/).
 
-The foundation creates an empty AWS CloudFormation stack (`<deployment_name>-tracking-stack`) whose description
-carries the Guidance's solution ID; AWS uses it to count deployments of this Guidance.
+Weakening a default (public mode, plain HTTP, DEBUG logging) takes an explicit input; public mode without an
+identity provider and DEBUG logging also print a warning on every plan. To report a security issue, see
+[CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications).
+
+### Identity and Access Management (IAM)
+
+- **Task role**: may invoke Amazon Bedrock models and guardrails, read the LiteLLM configuration and write request
+  logs. Inputs narrow the allowed models and Regions, and other accounts' roles can only be assumed when listed
+  explicitly.
+- **Execution role**: reads only the secrets the tasks use and writes their logs; it gets image pull rights only
+  for a private ECR repository given as `image_uri`.
+- **Service roles**: RDS Enhanced Monitoring and VPC flow logs each have their own role. No policy grants `*`
+  actions.
+
+### Network Security
+
+- **Amazon VPC**: the tasks, database and cache run in private subnets in two Availability Zones, in a VPC the
+  Guidance creates or one you bring.
+- **Internal load balancer**: reachable only from the VPC and the client ranges or security groups you list;
+  public mode is opt-in and attaches AWS WAF.
+- **Security groups**: traffic is allowed only from the load balancer to the tasks and from the tasks (and clients
+  you list) to the database and cache.
+- **Egress**: one NAT gateway serves outbound calls; a mode without internet access uses VPC endpoints only.
+- **VPC flow logs**: all traffic is logged to CloudWatch Logs.
+
+### Data Protection
+
+- **In transit**: the load balancer serves HTTPS with a TLS 1.2/1.3 policy and redirects HTTP; Redis requires TLS
+  and an auth token.
+- **At rest**: RDS, ElastiCache, Secrets Manager, CloudWatch Logs, SNS and the S3 buckets are encrypted, with AWS
+  managed keys or your own AWS KMS key.
+- **S3 buckets**: public access blocked and TLS-only bucket policies.
+- **Prompts and responses**: kept out of LiteLLM's logging callbacks; the request logs in S3 hold metadata only.
+  Email addresses are masked in the LiteLLM log group, and database logs omit query parameter values.
+- **Backups**: deletion protection is on by default, automated backups are kept for 30 days, and destroying the
+  database takes a final snapshot.
+
+### Monitoring and Logging
+
+- **Amazon CloudWatch**: alarms on load balancer, ECS, RDS and ElastiCache metrics and on LiteLLM errors, a
+  dashboard, and an encrypted SNS topic for notifications.
+- **Logs**: the container, VPC flow, WAF and Client VPN log groups, and the load balancer access logs and request
+  logs in S3, are retained for ten years. RDS exports the PostgreSQL log to CloudWatch Logs.
+
+### Container Security
+
+- **Pinned image**: the official LiteLLM image is pinned by digest, so every task runs exactly the reviewed image.
+- **Mirroring**: `deploy/mirror-image.sh` verifies the upstream image signature before copying it into Amazon ECR.
+
+### Secrets Management
+
+- **AWS Secrets Manager**: credentials are generated at the first deployment and written with Terraform
+  write-only arguments, so they never appear in Terraform variables, plans or state. Secrets you add are passed as
+  Secrets Manager ARNs; only the identity provider client secret reaches the Terraform state (see
+  [Identity provider](docs/deployment.md#identity-provider)).
+
+### Additional Security Considerations
+
+- Keep the LiteLLM image up to date; follow the [LiteLLM release notes](https://docs.litellm.ai/release_notes).
+- Give applications LiteLLM virtual keys with budgets and rate limits; keep the master key for administration.
+- Configure an identity provider, especially in public mode.
+- Review IAM permissions, client ranges and LiteLLM users and teams regularly.
+
+## Repository structure
+
+| Path | Contents |
+| --- | --- |
+| [`terraform/foundation`](terraform/foundation) | Long-lived network and data: VPC, RDS, Redis, Secrets Manager, config bucket, optional demo Client VPN. |
+| [`terraform/app`](terraform/app) | Load balancer, WAF, ECS service and migration task, LiteLLM configuration, IAM, logs, alarms. |
+| [`terraform/modules`](terraform/modules/README.md) | Child modules: [observability](terraform/modules/observability/README.md), [rollout](terraform/modules/rollout/README.md) and vpn. |
+| [`deploy`](deploy) | Deployment scripts and the `terraform.tfvars.example` input file. |
+| [`docs`](docs) | [Deployment guide](docs/deployment.md) and [configuration reference](docs/configuration.md). |
+| [`examples/agentcore`](examples/agentcore/README.md) | An agent on Amazon Bedrock AgentCore Runtime that does all of its inference through the gateway. |
+| [`examples/eks`](examples/eks/README.md) | Running the gateway on an existing Amazon EKS cluster. |
+| [`loadtest`](loadtest/README.md) | Load-test harness for a deployed gateway. |
 
 ## Open source libraries
 
-See [ATTRIBUTION](ATTRIBUTION.md).
+For the open source libraries this Guidance uses, see [ATTRIBUTION](ATTRIBUTION.md).
 
 ## Notices
 

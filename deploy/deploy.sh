@@ -12,7 +12,7 @@
 # State lives in a versioned, encrypted, private S3 bucket with native S3
 # locking, under <deployment_name>/foundation.tfstate and
 # <deployment_name>/app.tfstate. The bucket is created on first run (the
-# fresh-account bootstrap step, see docs/setup.md) and must be
+# fresh-account bootstrap step, see docs/deployment.md) and must be
 # owned by the deploying account; override its name with TF_STATE_BUCKET, the
 # region with AWS_REGION.
 #
