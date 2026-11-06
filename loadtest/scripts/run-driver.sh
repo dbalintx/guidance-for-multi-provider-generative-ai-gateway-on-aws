@@ -6,7 +6,7 @@
 # locust/locustfile.py (STEPS, STREAM_RATIO, ...). Without STEPS, USERS,
 # SPAWN_RATE and RUN_TIME apply. PROCESSES: locust processes (default: vCPUs).
 # TOOL=compare runs bedrock_compare/compare.py instead (MODEL = the gateway's
-# Bedrock model, BEDROCK_MODEL, SAMPLES, CONCURRENCY, MAX_TOKENS).
+# Bedrock model, BEDROCK_MODEL, SAMPLES, CONCURRENCY, MAX_TOKENS, MAX_RPM).
 # Results are synced to s3://$ARTIFACTS_BUCKET/results/<run-name>/ every
 # minute and at the end, where a DONE file marks completion.
 set -euo pipefail
@@ -51,7 +51,7 @@ if [ "${TOOL:-locust}" = compare ]; then
   # Gateway against direct Bedrock (bedrock_compare/compare.py).
   /opt/loadtest/venv/bin/python compare.py --gateway-url "$GATEWAY_URL" --gateway-model "${MODEL:?}" \
     --bedrock-model "${BEDROCK_MODEL:?}" --region "$REGION" \
-    --samples "${SAMPLES:-300}" --concurrency "${CONCURRENCY:-1,8}" --max-tokens "${MAX_TOKENS:-64}" \
+    --samples "${SAMPLES:-300}" --concurrency "${CONCURRENCY:-1,8}" --max-tokens "${MAX_TOKENS:-64}" --max-rpm "${MAX_RPM:-0}" \
     --out results >results/compare.log 2>&1
 else
   /opt/loadtest/venv/bin/locust "${args[@]}" >results/locust.log 2>&1

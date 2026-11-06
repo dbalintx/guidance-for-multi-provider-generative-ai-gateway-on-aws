@@ -121,6 +121,13 @@ def main() -> None:
     p.add_argument("--samples", type=int, default=300, help="requests per path, mode and concurrency level")
     p.add_argument("--concurrency", default="1,8")
     p.add_argument("--max-tokens", type=int, default=64)
+    p.add_argument(
+        "--max-rpm",
+        type=float,
+        default=0,
+        help="pace the rounds to at most this many requests per minute over both paths (stay below the "
+        "account's Bedrock quota, or throttling retries swamp the comparison); 0: no pacing",
+    )
     p.add_argument("--out", required=True)
     a = p.parse_args()
     key = os.environ["API_KEY"]
@@ -159,8 +166,11 @@ def main() -> None:
             for _ in range(-(-a.samples // conc)):
                 random.shuffle(combos)
                 for path, stream in combos:
+                    began = time.monotonic()
                     prompts = [f"[{uuid.uuid4().hex[:8]}] {random.choice(PROMPTS)}" for _ in range(conc)]
                     list(pool.map(lambda pr, pa=path, st=stream, c=conc: one(pa, st, c, pr), prompts))
+                    if a.max_rpm > 0:
+                        time.sleep(max(0.0, conc * 60 / a.max_rpm - (time.monotonic() - began)))
     log.close()
     print(os.path.join(a.out, "compare.jsonl"))
 

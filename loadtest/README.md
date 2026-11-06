@@ -109,13 +109,16 @@ Register the same model on the gateway and run the comparison:
 ```bash
 BEDROCK_MODEL=<model id> scripts/gateway.sh setup        # adds <prefix>-bedrock
 scripts/driver.sh run compare TOOL=compare MODEL=<prefix>-bedrock BEDROCK_MODEL=<model id> \
-  SAMPLES=300 CONCURRENCY=1,8 MAX_TOKENS=64
+  SAMPLES=300 CONCURRENCY=1,4 MAX_TOKENS=64 MAX_RPM=180
 ```
 
 Each round sends the same number of requests per path (direct, gateway) and
 mode (streaming, not), in a shuffled order; `results/<run>/compare.jsonl` has
 one line per request (`path`, `stream`, `concurrency`, `ttft_ms`, `total_ms`,
-`overhead_ms`, tokens, `error`). Compare the percentiles per path. Prompts are
+`overhead_ms`, tokens, `error`). Compare the percentiles per path. Keep
+`MAX_RPM` below the account's on-demand requests-per-minute quota for the model
+(Service Quotas, Amazon Bedrock): throttled requests are retried by both the
+SDK and LiteLLM, and the retries, not the gateway, then dominate the tails. Prompts are
 short and `MAX_TOKENS` small: 4 x 300 x levels requests cost cents on a small
 model.
 
