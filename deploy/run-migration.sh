@@ -1,9 +1,9 @@
 #!/bin/bash
 # Run LiteLLM's database migration once, as a one-off ECS task, and fail if it
-# fails. Called by Terraform (terraform_data.migrate in terraform/app/ecs.tf)
+# fails. Called by Terraform (the rollout module, terraform/modules/rollout)
 # during `terraform apply`, BEFORE the service rolls to a new task definition:
-# LiteLLM's health endpoints report healthy on an unmigrated database (verified
-# on 1.82.3 and 1.106.0), so nothing downstream would catch a missed migration.
+# LiteLLM's health endpoints report healthy on an unmigrated database, so
+# nothing downstream would catch a missed migration.
 #
 # Inputs (environment): CLUSTER, TASK_DEFINITION, SUBNETS (comma-separated),
 # SECURITY_GROUPS (comma-separated), AWS_REGION, and optionally

@@ -85,7 +85,7 @@ resource "aws_lb_listener" "http" {
     }
   }
 
-  # Private proof of concept without a certificate: plain HTTP straight to LiteLLM.
+  # Private trial without a certificate: plain HTTP straight to LiteLLM.
   dynamic "default_action" {
     for_each = local.serve_http ? [1] : []
     content {

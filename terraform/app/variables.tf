@@ -155,7 +155,7 @@ variable "certificate_arn" {
 
   validation {
     condition     = var.allow_insecure_http || var.certificate_arn != null
-    error_message = "A certificate_arn is required. Only a private proof of concept may set allow_insecure_http = true instead."
+    error_message = "A certificate_arn is required. Only a private trial deployment may set allow_insecure_http = true instead."
   }
 }
 
@@ -188,7 +188,7 @@ variable "record_name" {
 }
 
 variable "identity_provider" {
-  description = "Optional OIDC identity provider. When set, the ALB requires sign-in in front of the LiteLLM UI paths — unconditionally, in private and public mode alike. The client secret is given as a Secrets Manager ARN; its value never passes through variables."
+  description = "Optional OIDC identity provider. When set, the ALB requires sign-in in front of the LiteLLM UI paths — unconditionally, in private and public mode alike. The client secret is given as a Secrets Manager ARN; its value does not pass through variables."
   type = object({
     issuer                 = string
     authorization_endpoint = string
@@ -214,7 +214,7 @@ variable "litellm_license_secret_arn" {
 # --- App-only inputs (never wired from foundation) ---
 
 variable "client_cidrs" {
-  description = "Private mode: CIDR ranges allowed to reach the ALB (VPN, Direct Connect, Transit Gateway). Empty means the VPC CIDR only — never all of RFC 1918."
+  description = "Private mode: CIDR ranges allowed to reach the ALB (VPN, Direct Connect, Transit Gateway). Empty means the VPC CIDR only, not all of RFC 1918."
   type        = list(string)
   default     = []
 
@@ -291,7 +291,7 @@ locals {
 }
 
 variable "provider_secret_arns" {
-  description = "Environment variable name => Secrets Manager ARN (optionally with the :json-key:: suffix) for non-Bedrock provider API keys. Values never pass through variables or state. Names the stack sets itself are rejected."
+  description = "Environment variable name => Secrets Manager ARN (optionally with the :json-key:: suffix) for non-Bedrock provider API keys. Values do not pass through variables or state. Names the stack sets itself are rejected."
   type        = map(string)
   default     = {}
 
