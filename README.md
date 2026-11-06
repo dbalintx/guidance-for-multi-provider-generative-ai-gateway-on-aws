@@ -275,7 +275,7 @@ identity provider and DEBUG logging also print a warning on every plan. To repor
 | [`deploy`](deploy) | Deployment scripts and the `terraform.tfvars.example` input file. |
 | [`docs`](docs) | [Deployment guide](docs/deployment.md) and [configuration reference](docs/configuration.md). |
 | [`examples/agentcore`](examples/agentcore/README.md) | An agent on Amazon Bedrock AgentCore Runtime that does all of its inference through the gateway. |
-| [`examples/eks`](examples/eks/README.md) | Running the gateway on an existing Amazon EKS cluster. |
+| [`examples/eks`](examples/eks/README.md) | Guidance for running the gateway on Amazon EKS on top of the foundation stack (not a tested deployment). |
 | [`loadtest`](loadtest/README.md) | Load-test harness for a deployed gateway. |
 
 ## Open source libraries
