@@ -33,5 +33,4 @@ is pulled unmodified from its upstream source at deployment, build or test time.
 | --- | --- | --- |
 | [pytest](https://github.com/pytest-dev/pytest) | Python tests | [MIT License](https://github.com/pytest-dev/pytest/blob/main/LICENSE) |
 | [pytest-aiohttp](https://github.com/aio-libs/pytest-aiohttp) | Load-test tests | [Apache License 2.0](https://github.com/aio-libs/pytest-aiohttp/blob/master/LICENSE) |
-| [PyYAML](https://github.com/yaml/pyyaml) | Amazon EKS example tests | [MIT License](https://github.com/yaml/pyyaml/blob/main/LICENSE) |
 | [Ruff](https://github.com/astral-sh/ruff) | Python linting and formatting | [MIT License](https://github.com/astral-sh/ruff/blob/main/LICENSE) |

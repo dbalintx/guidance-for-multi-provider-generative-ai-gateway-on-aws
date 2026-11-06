@@ -1,9 +1,0 @@
-# Copy to terraform.tfvars. vpc_cidr and kms_key_arn come from the gateway's
-# foundation outputs (scripts/deploy.sh passes them); set only these:
-
-deployment_name = "llmgw"           # the gateway's deployment_name (deploy/terraform.tfvars)
-cluster_name    = "llmgw-eks-trial" # an existing EKS cluster in the gateway's region and VPC
-
-# name      = "llmgw-eks" # prefix of the IAM role and the request-log bucket
-# namespace = "litellm"
-# request_log_retention_days = 30

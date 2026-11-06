@@ -1,4 +1,0 @@
-# Local test and lint tooling (render.py itself needs only the standard library).
-pytest==8.4.2
-PyYAML==6.0.3
-ruff==0.14.3
