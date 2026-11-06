@@ -8,7 +8,7 @@ environment_variables:
   # At DEBUG, LiteLLM writes every prompt and response to the logs.
 
 general_settings:
-  # The ALB is the reverse proxy LiteLLM 1.106 expects to be told about:
+  # The ALB is the reverse proxy LiteLLM needs to be told about:
   # attribute UI sign-in attempts to the client, not to the ALB.
   trusted_proxy_ranges: ${jsonencode(trusted_proxy_ranges)}
   # Spend is written to the database in batches every 60 s (LiteLLM default

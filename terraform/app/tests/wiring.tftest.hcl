@@ -476,7 +476,7 @@ run "oidc_applied_in_private_mode" {
     error_message = "An identity provider must put the OIDC action in front of the UI in private mode too (the route set spans two rules of at most five patterns)."
   }
 
-  # The full set of UI and interactive sign-in routes of LiteLLM v1.106.6.
+  # The full set of UI and interactive sign-in routes of the pinned LiteLLM release.
   assert {
     condition = toset(flatten([for r in aws_lb_listener_rule.ui_oidc : [for c in r.condition : tolist(tolist(c.path_pattern)[0].values)]])) == toset([
       "/ui", "/ui/*", "/sso/*", "/login*", "/v2/login",
