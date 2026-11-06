@@ -54,7 +54,7 @@ To narrow it, admit a security group used only by the gateway's nodes, or securi
   callbacks need a request-log bucket of the EKS stack.
 - **Secrets: a Kubernetes Secret written from the Secrets Manager values.** Read the five values at deploy time
   and pass them to `kubectl` on stdin, not as command arguments; server-side apply avoids a second copy in the
-  `last-applied-configuration` annotation. Restart the pods after a secret rotation. Unlike on ECS, the values are
+  `last-applied-configuration` annotation. Restart the pods after you change a secret. Unlike on ECS, the values are
   then readable by anyone who may read Secrets in the namespace.
 - **AWS access: EKS Pod Identity, with Bedrock inference and guardrails only.** The equivalent of the ECS task
   role (`terraform/app/iam.tf`), plus `s3:PutObject` on the request-log bucket. Pod Identity needs no per-cluster
