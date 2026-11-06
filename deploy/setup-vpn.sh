@@ -13,8 +13,8 @@
 #          VPN configuration and writes a ready-to-import .ovpn profile with
 #          the client certificate and key.
 #
-# Demo/testing only. Production access should use Direct Connect or Transit
-# Gateway. No secret is ever printed; the .ovpn file is written mode 600.
+# Demo and testing only; use Direct Connect, Transit Gateway or your own VPN
+# for regular access. No secret is ever printed; the .ovpn file is written mode 600.
 set -euo pipefail
 
 KEY_BITS=2048 # Client VPN accepts RSA 1024/2048 only
@@ -51,7 +51,7 @@ Options:
                     fresh temporary directory.
   -h, --help        Show this help.
 
-Demo/testing only. Production access should use Direct Connect or Transit Gateway.
+Demo and testing only; use Direct Connect, Transit Gateway or your own VPN for regular access.
 EOF
 }
 

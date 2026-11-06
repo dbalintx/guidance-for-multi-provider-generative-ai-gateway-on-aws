@@ -41,7 +41,7 @@ litellm_settings:
     s3_region_name: ${jsonencode(region)}
 
 router_settings:
-  # simple-shuffle is LiteLLM's recommended production strategy; usage-based
+  # simple-shuffle is LiteLLM's recommended routing strategy; usage-based
   # routing adds a Redis round trip to every request. Redis stays attached so
   # RPM/TPM limits are shared across tasks.
   routing_strategy: simple-shuffle

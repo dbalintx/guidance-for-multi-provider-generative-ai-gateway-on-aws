@@ -1,10 +1,10 @@
-# The gateway on Amazon EKS (non-production starting point)
+# The gateway on Amazon EKS (a starting point)
 
 This example runs the same LiteLLM container on an existing Amazon EKS cluster,
 against the gateway's foundation (VPC, RDS PostgreSQL, Redis, Secrets Manager).
 It shows that the gateway is not tied to ECS and gives Kubernetes users a small,
-readable starting point. **It is not a production deployment**: the production
-path is the ECS Fargate service in `terraform/app`. See
+readable starting point. **It is a starting point, not the recommended configuration**,
+which runs on the ECS Fargate service in `terraform/app`. See
 [what ECS has that this lacks](#what-ecs-has-that-this-lacks).
 
 What it is:

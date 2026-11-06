@@ -6,7 +6,7 @@ This page takes you from an empty AWS account to a verified gateway. Every input
 - [Choose a deployment](#choose-a-deployment)
 - [Prerequisites](#prerequisites)
 - [Trial deployment](#trial-deployment)
-- [Private production deployment](#private-production-deployment)
+- [Recommended private deployment](#recommended-private-deployment)
 - [Public deployment](#public-deployment)
 - [Identity provider](#identity-provider)
 - [Deploy](#deploy)
@@ -19,15 +19,15 @@ This page takes you from an empty AWS account to a verified gateway. Every input
 ### Deployment types
 
 1. **[Trial](#trial-deployment): for testing only.** A private gateway on plain HTTP, reached through a demo AWS
-   Client VPN, without a LiteLLM licence or identity provider. Use it to explore LiteLLM; never send production
-   traffic or real credentials through it.
-2. **[Private production](#private-production-deployment): strongly recommended.** An internal load balancer with
-   HTTPS, a DNS name, an identity provider in front of the UI and a LiteLLM Enterprise licence, reached from your
-   own network.
+   Client VPN, without a LiteLLM licence or identity provider. Use it to explore LiteLLM; do not use it for real
+   workloads or send real credentials through it.
+2. **[Recommended private](#recommended-private-deployment).** The recommended configuration: an internal load
+   balancer with HTTPS, a DNS name, an identity provider in front of the UI and a LiteLLM Enterprise licence,
+   reached from your own network.
 3. **[Public](#public-deployment).** An internet-facing load balancer with HTTPS and AWS WAF, for clients that
    cannot reach your network. Use it with an identity provider.
 
-| | Trial | Private production | Public |
+| | Trial | Recommended (private) | Public |
 | --- | --- | --- | --- |
 | Load balancer | Internal | Internal | Internet-facing, AWS WAF |
 | Protocol | Plain HTTP | HTTPS (your ACM certificate) | HTTPS (your ACM certificate) |
@@ -131,8 +131,8 @@ With `kms_key_arn = null` AWS managed keys are used and no key policy work is ne
 
 > **For testing only.** The trial serves plain HTTP, is reachable only through a demo Client VPN that shares one
 > client certificate, and runs without a licence or identity provider. `allow_insecure_http` cannot be combined
-> with public mode or an identity provider. Move to [private production](#private-production-deployment) before
-> real use.
+> with public mode or an identity provider. Move to the
+> [recommended private deployment](#recommended-private-deployment) before real use.
 
 **Prerequisites.** The [common prerequisites](#prerequisites) and two VPN certificates in ACM. Create them with
 the `deployment_name` from your tfvars:
@@ -162,9 +162,10 @@ VPN is split-tunnel and authorised for the VPC range only. Then [deploy](#deploy
 [connect the VPN](#connect-the-trial-vpn).
 
 When the trial is over, set `create_vpn = false` and run `deploy/deploy.sh`, or remove the whole deployment
-([teardown](#teardown)). The demo VPN is not a production access path.
+([teardown](#teardown)). The demo VPN is for testing only; use Direct Connect, Transit Gateway or your own VPN
+for regular access.
 
-## Private production deployment
+## Recommended private deployment
 
 The recommended deployment: the load balancer stays internal (`public_mode = false`, the default) and clients
 reach it over your own network.
@@ -250,11 +251,11 @@ IP-reputation rule sets and a rate limit of 2,000 requests per source IP per fiv
 429). Body-inspecting rules of the common rule set only count, because prompts routinely contain HTML, code and
 URLs. WAF logs go to the `aws-waf-logs-<deployment_name>` log group with credential headers and cookies redacted.
 
-**Prerequisites.** As for [private production](#private-production-deployment), except the network path: clients
-come from the internet.
+**Prerequisites.** As for the [recommended private deployment](#recommended-private-deployment), except the
+network path: clients come from the internet.
 
-**Settings** in `deploy/terraform.tfvars`: the private production settings without `client_cidrs` and
-`client_security_group_ids`, plus:
+**Settings** in `deploy/terraform.tfvars`: the recommended private deployment's settings without `client_cidrs`
+and `client_security_group_ids`, plus:
 
 ```hcl
 public_mode = true

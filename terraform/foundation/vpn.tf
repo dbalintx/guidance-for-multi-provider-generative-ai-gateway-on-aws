@@ -1,5 +1,6 @@
 # Optional demo Client VPN (off by default): a way to reach a private gateway
-# for trials, not a production access path. Associated with ONE private subnet —
+# for trials only (use Direct Connect, Transit Gateway or your own VPN for
+# regular access). Associated with ONE private subnet —
 # every association is billed hourly and one is enough to reach the whole VPC.
 # Clients may reach the VPC on 443 and 80, so an allow_insecure_http trial needs
 # no extra setting.
