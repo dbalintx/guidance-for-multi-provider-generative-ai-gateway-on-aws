@@ -10,7 +10,7 @@ call shows up in the gateway's spend logs under that key.
 It consumes the gateway as plain inputs (URL, VPC, subnets, master key secret
 ARN) and does not modify the gateway's stacks.
 
-```
+```text
  caller (SigV4)                         AWS account
  ─────────────►  AgentCore Runtime (VPC mode, gateway's private subnets)
                  ┌───────────────────────────────────────┐
@@ -79,6 +79,11 @@ export AWS_REGION=<gateway region>
 scripts/deploy.sh            # shows the plan and asks for confirmation
 ```
 
+The gateway outputs are described in the gateway's
+[configuration reference](../../docs/configuration.md#outputs); the foundation
+outputs are also saved in
+`deploy/.generated/<deployment_name>-foundation-outputs.tfvars.json`.
+
 `deploy.sh` builds the bundle and runs `terraform apply`. During the apply,
 Terraform runs `scripts/agent-key.sh create`, which creates the agent's
 virtual key in LiteLLM (only if the agent has no working key) and stores it.
@@ -87,7 +92,7 @@ Rerunning `deploy.sh` updates the agent; an unchanged agent is a no-op.
 Resources created (all named after `name`, default `llmgw-agent-demo`):
 
 | Resource | Name |
-|---|---|
+| --- | --- |
 | AgentCore runtime (and its default endpoint and workload identity) | `llmgw_agent_demo` (runtime names allow no hyphens) |
 | AgentCore Identity API-key credential provider | `llmgw-agent-demo-gateway` |
 | Secrets Manager secret with the virtual key | `llmgw-agent-demo-gateway-key` |
@@ -113,7 +118,8 @@ python3 scripts/invoke.py "How many words are in 'the quick brown fox'? Use your
 The region is `--region`, else `AWS_REGION`, else `AWS_DEFAULT_REGION`, else
 the region in the runtime ARN. Callers need `bedrock-agentcore:InvokeAgentRuntime` and
 `bedrock-agentcore:InvokeAgentRuntimeForUser` on the runtime. A SigV4 caller
-must pass a runtime user ID (`runtimeUserId`, `invoke.py --user-id`): AgentCore
+must pass a runtime user ID (`runtimeUserId`; `invoke.py --user-id`, default
+`example-user`): AgentCore
 Runtime issues the invocation's workload access token for it, and without that
 token the agent cannot obtain its gateway key (it answers with an error).
 
