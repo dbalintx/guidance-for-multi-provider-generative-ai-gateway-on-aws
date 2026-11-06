@@ -133,10 +133,10 @@ run "private_defaults" {
   assert {
     condition = (
       aws_ecs_service.litellm.desired_count == 2 &&
-      aws_appautoscaling_policy.cpu.target_tracking_scaling_policy_configuration[0].target_value == 75 &&
+      aws_appautoscaling_policy.cpu.target_tracking_scaling_policy_configuration[0].target_value == 35 &&
       aws_appautoscaling_policy.memory.target_tracking_scaling_policy_configuration[0].target_value == 70
     )
-    error_message = "Two tasks at creation; target tracking at 75 % CPU and 70 % memory."
+    error_message = "Two tasks at creation; target tracking at 35 % CPU and 70 % memory."
   }
 
   assert {

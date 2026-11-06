@@ -169,10 +169,10 @@ locals {
     # and the RDS connection alarm (20 x ~10 connections x 2 during a deploy)
     # are sized for the same 20.
     max = 20
-    # Calibrate with a load test: LiteLLM runs a single worker process, which
-    # saturates at about one vCPU, so on a 2-vCPU task the service CPU average
-    # may never reach 75 % while latency already climbs.
-    cpu_target_percent    = 75
+    # LiteLLM runs a single worker process, which saturates at one vCPU: on a
+    # 2-vCPU task the service CPU average levels off at about 50 %, and latency
+    # starts to climb from about 40 %. The target scales out below that point.
+    cpu_target_percent    = 35
     memory_target_percent = 70
   }
 }
