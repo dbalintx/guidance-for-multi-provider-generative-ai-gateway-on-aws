@@ -259,8 +259,6 @@ come from the internet.
 public_mode = true
 ```
 
-Public mode cannot be combined with `disable_outbound_network_access` or `allow_insecure_http`.
-
 > **Public mode without an identity provider exposes the admin UI.** The LiteLLM UI, which can create keys,
 > change models and read spend for every team, is then reachable from the internet behind only the UI password
 > and WAF. The plan warns about it on every run but does not block it. Configure an
@@ -420,7 +418,7 @@ curl -sS "<gateway-url>/v1/chat/completions" \
 > **Test with a natural question.** Echo-style canary prompts ("Say OK", "repeat after me") can come back with
 > `finish_reason: "content_filter"` and no content. That is the model's behaviour, not a gateway fault.
 
-> **Models newer than the image show $0 cost.** The tasks use the model price list bundled in the pinned LiteLLM
-> image (`LITELLM_LOCAL_MODEL_COST_MAP`, no download at start-up). A model released after that image records
-> spend as $0 until a newer image is deployed or you set its price in `model_info`
-> ([custom pricing](https://docs.litellm.ai/docs/proxy/custom_pricing)).
+Models newer than the image show $0 cost: the tasks use the model price list bundled in the pinned LiteLLM image
+(`LITELLM_LOCAL_MODEL_COST_MAP`, no download at start-up). A model released after that image records spend as $0
+until a newer image is deployed or you set its price in `model_info`
+([custom pricing](https://docs.litellm.ai/docs/proxy/custom_pricing)).
