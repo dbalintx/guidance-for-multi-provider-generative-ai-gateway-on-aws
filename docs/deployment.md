@@ -1,7 +1,7 @@
 # Setup
 
 This page takes you from an empty AWS account to a verified gateway. Day-2 tasks are in
-[operations.md](operations.md); every input is listed in [reference.md](reference.md).
+[operations.md](operations.md); every input is listed in [configuration.md](configuration.md).
 
 > **Breaking change.** Version 2 of this Guidance replaces the previous version (its middleware, Amazon CloudFront
 > distribution, Amazon EKS option and bastion host are gone). There is no in-place upgrade and no Terraform state

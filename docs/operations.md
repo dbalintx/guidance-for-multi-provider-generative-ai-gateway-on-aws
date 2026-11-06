@@ -1,7 +1,7 @@
 # Operations
 
-Day-2 procedures for a deployed gateway. Deployment itself is in [setup.md](setup.md); inputs are listed in
-[reference.md](reference.md). The examples assume `deployment_name = "llmgw"` and:
+Day-2 procedures for a deployed gateway. Deployment itself is in [deployment.md](deployment.md); inputs are listed in
+[configuration.md](configuration.md). The examples assume `deployment_name = "llmgw"` and:
 
 ```bash
 OUT=deploy/.generated/llmgw-foundation-outputs.tfvars.json
@@ -126,7 +126,7 @@ litellm_license_secret_arn = "arn:aws:secretsmanager:<region>:<account-id>:secre
 ```
 
 Run `deploy/deploy.sh`. LiteLLM checks the licence online, so the tasks need outbound access to LiteLLM's licence
-server (see [No outbound internet access](setup.md#no-outbound-internet-access)).
+server (see [No outbound internet access](deployment.md#no-outbound-internet-access)).
 
 ## Monitoring and alarms
 
@@ -169,14 +169,14 @@ destroyed and redeployed at any time against a living foundation.
 
 | Symptom | Cause and fix |
 | --- | --- |
-| Tasks stop with `CannotPullContainerError` | No route to `ghcr.io` (no-internet mode, or a VPC without egress). [Mirror the image](setup.md#no-outbound-internet-access) and set `image_uri`. |
+| Tasks stop with `CannotPullContainerError` | No route to `ghcr.io` (no-internet mode, or a VPC without egress). [Mirror the image](deployment.md#no-outbound-internet-access) and set `image_uri`. |
 | App apply fails in the migration step | `run-migration.sh` prints the task's exit code or timeout; the migration logs are in the LiteLLM log group (`log_group_name` output). The service has not rolled. Fix the cause and deploy again; raise `MIGRATION_TIMEOUT_SECONDS` if the migration is only slow. |
 | Apply finished but the old version still serves | The circuit breaker rolled back. Check the service events and the stopped tasks' reasons in the ECS console and the LiteLLM logs. |
 | Every model call fails, the gateway is healthy | Bedrock model access is not enabled for that model and Region, the model is outside `bedrock_model_allowlist` / `bedrock_region_allowlist`, or the model ID or Region in the model definition is wrong. |
-| A completion returns `finish_reason: "content_filter"` with no content | The model filtered an echo-style prompt; [use a natural question](setup.md#add-a-model). |
-| Spend shows $0 for a model | The model is newer than the image's price list; [see Add a model](setup.md#add-a-model). |
+| A completion returns `finish_reason: "content_filter"` with no content | The model filtered an echo-style prompt; [use a natural question](deployment.md#add-a-model). |
+| Spend shows $0 for a model | The model is newer than the image's price list; [see Add a model](deployment.md#add-a-model). |
 | UI sign-in fails after the identity provider redirect | Redirect URI not registered as `https://<gateway-host>/oauth2/idpresponse`, wrong issuer or endpoints, or the load balancer cannot reach the provider (no-internet mode). |
-| Log group or data store creation fails with a KMS error, or alarms never notify | The customer key policy is missing a grant; see [Customer managed KMS key](setup.md#customer-managed-kms-key-optional). |
+| Log group or data store creation fails with a KMS error, or alarms never notify | The customer key policy is missing a grant; see [Customer managed KMS key](deployment.md#customer-managed-kms-key-optional). |
 | A non-ECS client times out connecting to Redis | Redis requires TLS and the auth token; use `rediss://`. |
 | The VPN client cannot connect right after deploy | The Client VPN endpoint is not `available` yet; wait several minutes, then run `deploy/setup-vpn.sh profile` again. |
 | Undeploy fails mentioning deletion protection | Set `deletion_protection = false`, run `deploy/deploy.sh`, then `deploy/undeploy.sh` again. |

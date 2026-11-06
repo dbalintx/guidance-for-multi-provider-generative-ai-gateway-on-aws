@@ -70,16 +70,16 @@ flowchart LR
 
 ## Getting started
 
-Follow [docs/setup.md](docs/setup.md). The fastest path is the trial deployment: private, plain HTTP, reached
+Follow [docs/deployment.md](docs/deployment.md). The fastest path is the trial deployment: private, plain HTTP, reached
 through a demo Client VPN, ready in one `deploy/deploy.sh` run.
 
 ## Documentation
 
 | Page | Contents |
 | --- | --- |
-| [docs/setup.md](docs/setup.md) | Prerequisites, deployment options (trial, private, public), identity provider, demo VPN, first model, verification |
+| [docs/deployment.md](docs/deployment.md) | Prerequisites, deployment options (trial, private, public), identity provider, demo VPN, first model, verification |
 | [docs/operations.md](docs/operations.md) | Upgrades, configuration changes, generated secrets, licence, monitoring, backups and teardown, troubleshooting |
-| [docs/reference.md](docs/reference.md) | Every Terraform input and output |
+| [docs/configuration.md](docs/configuration.md) | Every Terraform input and output |
 | [terraform/modules/observability/README.md](terraform/modules/observability/README.md) | Alarms and dashboard |
 | [LiteLLM documentation](https://docs.litellm.ai/) | Everything LiteLLM itself does: models, keys, teams, budgets, guardrails, SSO |
 
