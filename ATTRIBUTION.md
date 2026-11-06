@@ -7,7 +7,7 @@ is pulled unmodified from its upstream source at deployment, build or test time.
 
 | Component | Used for | License |
 | --- | --- | --- |
-| [LiteLLM](https://github.com/BerriAI/litellm) (`ghcr.io/berriai/litellm` container image) | The gateway itself | [MIT License](https://github.com/BerriAI/litellm/blob/main/LICENSE), except the `enterprise/` directory, which is under the LiteLLM Enterprise license |
+| [LiteLLM](https://github.com/BerriAI/litellm) (`ghcr.io/berriai/litellm` container image) | The gateway itself | [MIT License](https://github.com/BerriAI/litellm/blob/main/LICENSE), except the `enterprise/` directory, which is under a separate licence (`enterprise/LICENSE`) |
 | [Terraform AWS provider](https://github.com/hashicorp/terraform-provider-aws) | Deployment | [Mozilla Public License 2.0](https://github.com/hashicorp/terraform-provider-aws/blob/main/LICENSE) |
 | [Terraform random provider](https://github.com/hashicorp/terraform-provider-random) | Generated secrets | [Mozilla Public License 2.0](https://github.com/hashicorp/terraform-provider-random/blob/main/LICENSE) |
 
@@ -15,8 +15,8 @@ is pulled unmodified from its upstream source at deployment, build or test time.
 
 | Component | Used for | License |
 | --- | --- | --- |
-| [Strands Agents](https://github.com/strands-agents/sdk-python) (`strands-agents`) | Agent framework | [Apache License 2.0](https://github.com/strands-agents/sdk-python/blob/main/LICENSE) |
-| [Amazon Bedrock AgentCore SDK](https://github.com/aws/bedrock-agentcore-sdk-python) (`bedrock-agentcore`) | AgentCore Runtime and Identity integration | [Apache License 2.0](https://github.com/aws/bedrock-agentcore-sdk-python/blob/main/LICENSE) |
+| [Strands Agents](https://github.com/strands-agents/harness-sdk) (`strands-agents`) | Agent framework | [Apache License 2.0](https://github.com/strands-agents/harness-sdk/blob/main/LICENSE.APACHE) |
+| [Amazon Bedrock AgentCore SDK](https://github.com/aws/bedrock-agentcore-sdk-python) (`bedrock-agentcore`) | AgentCore Runtime and Identity integration | [Apache License 2.0](https://github.com/aws/bedrock-agentcore-sdk-python/blob/main/LICENSE.txt) |
 | [OpenAI Python library](https://github.com/openai/openai-python) (`openai`) | OpenAI-compatible client for the gateway | [Apache License 2.0](https://github.com/openai/openai-python/blob/main/LICENSE) |
 
 ## Load test
