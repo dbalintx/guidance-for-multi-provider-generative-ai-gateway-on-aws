@@ -26,7 +26,7 @@ module "observability" {
 All alarm names are `<deployment_name>-<key>`. They notify the SNS topic on ALARM and OK.
 
 | Key | Signal | Default |
-|---|---|---|
+| --- | --- | --- |
 | `alb-target-5xx-rate` | `100 * HTTPCode_Target_5XX_Count / RequestCount` (target group) | > 5 %, 2 of 3 periods, only with >= 10 requests per period |
 | `alb-elb-5xx` | `HTTPCode_ELB_5XX_Count` | > 10 per period, 2 of 3 |
 | `alb-latency-p90` | `TargetResponseTime` p90 | > 60 s, 2 of 3 |
@@ -86,7 +86,7 @@ Observed locally with `ghcr.io/berriai/litellm:v1.106.0`, `JSON_LOGS=True`, `LIT
 ## Inputs
 
 | Name | Description | Default |
-|---|---|---|
+| --- | --- | --- |
 | `deployment_name` | Prefix for every resource name | required |
 | `tags` | Extra tags on taggable resources (provider `default_tags` already propagate) | `{}` |
 | `alb_arn_suffix` | ALB ARN suffix (`LoadBalancer` dimension) | required |
@@ -109,7 +109,7 @@ Observed locally with `ghcr.io/berriai/litellm:v1.106.0`, `JSON_LOGS=True`, `LIT
 ## Outputs
 
 | Name | Description |
-|---|---|
+| --- | --- |
 | `sns_topic_arn` | Topic receiving the notifications |
 | `kms_key_arn` | Key created for the topic, or null |
 | `alarm_names` | All alarm names |
