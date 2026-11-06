@@ -100,18 +100,6 @@ variable "locust_version" {
   default     = "2.47.0"
 }
 
-variable "bedrock_model_ids" {
-  description = "Foundation models (in-region, on-demand) the driver may call directly, for the gateway-overhead comparison (bedrock_compare/). Empty: no Bedrock access."
-  type        = list(string)
-  default     = []
-}
-
-variable "boto3_version" {
-  description = "boto3 version the driver installs (bedrock_compare/)."
-  type        = string
-  default     = "1.40.0"
-}
-
 variable "tags" {
   description = "Tags for every resource."
   type        = map(string)
