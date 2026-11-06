@@ -76,6 +76,7 @@ resource "aws_s3_object" "scenario" {
   for_each = {
     "scenario/locustfile.py" = "${path.module}/../locust/locustfile.py"
     "scenario/run-driver.sh" = "${path.module}/../scripts/run-driver.sh"
+    "scenario/compare.py"    = "${path.module}/../bedrock_compare/compare.py"
   }
   bucket = aws_s3_bucket.artifacts.id
   key    = each.key
@@ -367,6 +368,17 @@ data "aws_iam_policy_document" "driver" {
     actions   = ["secretsmanager:GetSecretValue"]
     resources = [aws_secretsmanager_secret.api_key.arn]
   }
+  # Direct Bedrock calls for the gateway-overhead comparison, only for the
+  # models listed (in-region on-demand foundation models).
+  dynamic "statement" {
+    for_each = length(var.bedrock_model_ids) > 0 ? [1] : []
+    content {
+      sid     = "BedrockCompare"
+      actions = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+      resources = [for m in var.bedrock_model_ids :
+      "arn:${data.aws_partition.current.partition}:bedrock:${data.aws_region.current.region}::foundation-model/${m}"]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "driver" {
@@ -405,6 +417,7 @@ resource "aws_instance" "driver" {
 
   user_data = templatefile("${path.module}/templates/driver-user-data.sh.tftpl", {
     locust_version = var.locust_version
+    boto3_version  = var.boto3_version
   })
   user_data_replace_on_change = true
 
