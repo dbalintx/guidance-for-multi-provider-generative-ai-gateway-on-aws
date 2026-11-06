@@ -34,7 +34,7 @@ carries the Guidance's solution ID; AWS uses it to count deployments of this Gui
 
 ## Architecture
 
-The diagram shows the default, production-ready private deployment. The other
+The diagram shows the default private deployment, the recommended configuration. The other
 [deployment options](#deployment-options) are described in [docs/deployment.md](docs/deployment.md).
 
 ```mermaid
@@ -116,8 +116,8 @@ flowchart LR
 
 ## Deployment Options
 
-The gateway deploys as a trial (private, plain HTTP, demo VPN; for testing only), as a private production
-deployment with HTTPS, DNS, an identity provider and a LiteLLM licence (recommended), or in public mode behind AWS
+The gateway deploys as a trial (private, plain HTTP, demo VPN; for testing only), as the recommended
+private deployment with HTTPS, DNS, an identity provider and a LiteLLM licence, or in public mode behind AWS
 WAF. Follow [docs/deployment.md](docs/deployment.md); every input and output is listed in
 [docs/configuration.md](docs/configuration.md).
 

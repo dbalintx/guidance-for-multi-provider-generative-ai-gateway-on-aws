@@ -27,7 +27,7 @@ locals {
 }
 
 # --- LiteLLM request logs (the s3 callbacks in the rendered config). ---
-# Emptied and deleted on teardown: this is not a production audit trail.
+# Emptied and deleted on teardown: this example keeps no long-term audit trail.
 
 resource "aws_s3_bucket" "request_logs" {
   bucket        = local.request_log_bucket_name

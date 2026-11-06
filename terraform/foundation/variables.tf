@@ -134,7 +134,7 @@ variable "destroy_data_without_snapshot" {
 # --- Optional demo Client VPN (terraform/modules/vpn) ---
 
 variable "create_vpn" {
-  description = "Create the demo/test Client VPN into the VPC (mutual TLS, split tunnel, VPC range only). Not a production access path. Run deploy/setup-vpn.sh certs first for the two certificate ARNs."
+  description = "Create the demo/test Client VPN into the VPC (mutual TLS, split tunnel, VPC range only). For testing only; use Direct Connect, Transit Gateway or your own VPN for regular access. Run deploy/setup-vpn.sh certs first for the two certificate ARNs."
   type        = bool
   default     = false
 }
