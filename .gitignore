@@ -1,6 +1,4 @@
 .env
-config/config.yaml
-config/local-config.yaml
 
 .*.sw?
 **/.DS_Store
@@ -25,12 +23,15 @@ litellm-cdk/resources.txt
 **/myenv/
 **/fresh_venv/
 *.pyc
-.terraform.lock.hcl
+# .terraform.lock.hcl is COMMITTED for the two root modules (terraform/foundation, terraform/app)
 .terraform
 terraform.tfstate
 terraform.tfstate.backup
 .terraform.tfstate.lock.info
 terraform.tfstate.*
+*.tfplan
+deploy/.generated/
+deploy/terraform.tfvars
 
 **.env.testing
 **error.txt
