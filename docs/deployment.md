@@ -1,18 +1,84 @@
 # Deployment
 
-This page takes you from an empty AWS account to a verified gateway. Every input is listed in
-[configuration.md](configuration.md).
+This page takes you from an empty AWS account to a verified gateway.
 
-- [Choose a deployment](#choose-a-deployment)
-- [Prerequisites](#prerequisites)
-- [Trial deployment](#trial-deployment)
-- [Recommended private deployment](#recommended-private-deployment)
-- [Public deployment](#public-deployment)
-- [Identity provider](#identity-provider)
-- [Deploy](#deploy)
-- [Sign in to the UI](#sign-in-to-the-ui)
-- [Verify and add a first model](#verify-and-add-a-first-model)
-- [Teardown](#teardown)
+## Deployment at a glance
+
+1. [Install the tools](#tools) and check the account [prerequisites](#prerequisites).
+2. [Choose a deployment type](#choose-a-deployment): trial, recommended private or public.
+3. Set up what that type needs, such as the demo VPN certificates for a [trial](#trial-deployment), or the
+   certificate, DNS zone, network path, licence secret and [identity provider](#identity-provider) application for
+   the [recommended private](#recommended-private-deployment) and [public](#public-deployment) deployments.
+4. [Fill in `deploy/terraform.tfvars`](#set-up-your-deployment-type) from `deploy/terraform.tfvars.example` with the
+   settings listed for your type; [configuration.md](configuration.md) describes every input.
+5. [Run `deploy/deploy.sh`](#deploy): it creates the Terraform state bucket, shows each plan for review and applies
+   the foundation, then the app.
+6. [Run the smoke test and sign in to the UI](#verify-and-sign-in), then [add a first model](#add-a-first-model).
+
+## Prerequisites
+
+### Tools
+
+On the machine that runs the deployment:
+
+| Tool | Version | Used by |
+| --- | --- | --- |
+| [Terraform](https://developer.hashicorp.com/terraform/install) | 1.11 or later (write-only arguments, S3 native state locking) | `deploy/deploy.sh`, `deploy/undeploy.sh` |
+| [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) | Version 2 | All scripts; the app apply calls it to upload the LiteLLM config and run the schema migration task |
+| [jq](https://jqlang.org/) | Any recent version | `deploy/deploy.sh`, `deploy/undeploy.sh`, and the commands on this page |
+| Bash | The version shipped with macOS or Linux | All scripts |
+| curl | Any recent version | `deploy/smoke-test.sh` |
+| OpenSSL | 1.1.1 or later (`-addext`) | `deploy/setup-vpn.sh`, trial deployments only |
+| Docker and [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) | Any recent version | `deploy/mirror-image.sh`, only to mirror the image |
+| Python 3 | Any recent version | `deploy/smoke-test.sh --self-test` only |
+
+### Regions
+
+Any commercial AWS Region (the `aws` partition) where Amazon Bedrock and the services in the
+[architecture](../README.md#architecture) are available. AWS GovCloud (US) and the China Regions are not
+supported. Opt-in Regions must be enabled on the account first. The created VPC uses the first two available
+Availability Zones; a Region with fewer than two usable zones cannot be used.
+
+### Credentials and permissions
+
+Run the scripts with credentials for the target account and set the Region with `AWS_REGION` (or a default
+Region in the AWS CLI configuration). Besides permissions for the resources themselves, the deploying principal
+needs:
+
+- `iam:CreateServiceLinkedRole`: the first use of Amazon ECS, ElastiCache, RDS, Elastic Load Balancing or Client
+  VPN in an account creates their service-linked roles.
+- `iam:CreateRole`, `iam:AttachRolePolicy`, `iam:PassRole` for the roles the stack creates (ECS task and
+  execution roles, RDS Enhanced Monitoring role, VPC flow logs role).
+- For the app apply: `s3:PutObject` on the config bucket, `ecs:RunTask`, `ecs:DescribeTasks`, `ecs:StopTask`,
+  and `iam:PassRole` on the two task roles.
+- In public mode, for WAF logging: `logs:CreateLogDelivery`, `logs:PutResourcePolicy`,
+  `logs:DescribeResourcePolicies` and `logs:DescribeLogGroups`.
+- For the [Terraform state](#terraform-state) bucket: `s3:CreateBucket`, `s3:PutBucketVersioning`,
+  `s3:PutEncryptionConfiguration`, `s3:PutBucketPublicAccessBlock`, `s3:PutBucketOwnershipControls`,
+  `s3:PutBucketPolicy`, plus `s3:ListBucket`, object read and write on the bucket, and `sts:GetCallerIdentity`.
+
+### Service quotas
+
+Check these default quotas before the first deployment: Elastic IP addresses (one for the NAT gateway), VPCs per
+Region, Application Load Balancers per Region, and Fargate On-Demand vCPUs (enough for the maximum task count in
+the [architecture](../README.md#architecture)).
+
+### Customer managed KMS key (optional)
+
+With `kms_key_arn` set, the database, Redis, Secrets Manager secrets, CloudWatch log groups, the config and
+request-log buckets and the alarm topic are encrypted with your key. Terraform does not manage the key policy;
+it must allow:
+
+- the deploying principal to use the key;
+- `logs.<region>.amazonaws.com` `kms:Encrypt*`, `kms:Decrypt*`, `kms:GenerateDataKey*` and `kms:Describe*`
+  (otherwise creating the log groups fails with `AccessDeniedException`);
+- `cloudwatch.amazonaws.com` `kms:Decrypt` and `kms:GenerateDataKey*`, so alarms can publish to the encrypted
+  topic (without it the deploy succeeds but no alarm notification is delivered);
+- RDS and ElastiCache to use the key (they fail at creation with a KMS error otherwise).
+
+Secrets you create yourself (identity provider client secret, licence, provider API keys) must be encrypted with
+the AWS managed key `aws/secretsmanager` or with this same key; the task execution role can decrypt no other key.
+With `kms_key_arn = null` AWS managed keys are used and no key policy work is needed.
 
 ## Choose a deployment
 
@@ -50,84 +116,20 @@ This page takes you from an empty AWS account to a verified gateway. Every input
 - **Identity provider.** `identity_provider` makes the load balancer require OpenID Connect (OIDC) sign-in before
   it serves the LiteLLM UI. See [Identity provider](#identity-provider).
 
-All deployment types use the same scripts and one input file. Copy the example and edit it as described for your
-deployment type:
+## Set up your deployment type
+
+All deployment types use the same scripts and one input file. Copy the example, then follow the section for your
+deployment type: each lists its prerequisites and the settings to put in the file.
 
 ```bash
 cp deploy/terraform.tfvars.example deploy/terraform.tfvars
 ```
 
 `deployment_name` (default `llmgw` in the example) prefixes every resource; use a different name for each
-deployment in an account. Secrets never go in this file: secret inputs are Secrets Manager ARNs.
+deployment in an account. Secrets never go in this file: secret inputs are Secrets Manager ARNs. Every input is
+described in [configuration.md](configuration.md).
 
-## Prerequisites
-
-### Regions
-
-Any commercial AWS Region (the `aws` partition) where Amazon Bedrock and the services in the
-[architecture](../README.md#architecture) are available. AWS GovCloud (US) and the China Regions are not
-supported. Opt-in Regions must be enabled on the account first. The created VPC uses the first two available
-Availability Zones; a Region with fewer than two usable zones cannot be used.
-
-### Tools
-
-On the machine that runs the deployment:
-
-- Terraform 1.11 or later (the generated secrets use write-only arguments).
-- The AWS CLI and `jq`. The app apply calls the AWS CLI itself to upload the LiteLLM config and to run the
-  schema migration task.
-- `openssl`, for the demo Client VPN certificates.
-- Docker and `cosign`, only to mirror the image (`deploy/mirror-image.sh`).
-
-### Credentials and permissions
-
-Run the scripts with credentials for the target account and set the Region with `AWS_REGION` (or a default
-Region in the AWS CLI configuration). Besides permissions for the resources themselves, the deploying principal
-needs:
-
-- `iam:CreateServiceLinkedRole`: the first use of Amazon ECS, ElastiCache, RDS, Elastic Load Balancing or Client
-  VPN in an account creates their service-linked roles.
-- `iam:CreateRole`, `iam:AttachRolePolicy`, `iam:PassRole` for the roles the stack creates (ECS task and
-  execution roles, RDS Enhanced Monitoring role, VPC flow logs role).
-- For the app apply: `s3:PutObject` on the config bucket, `ecs:RunTask`, `ecs:DescribeTasks`, `ecs:StopTask`,
-  and `iam:PassRole` on the two task roles.
-- In public mode, for WAF logging: `logs:CreateLogDelivery`, `logs:PutResourcePolicy`,
-  `logs:DescribeResourcePolicies` and `logs:DescribeLogGroups`.
-
-### Terraform state
-
-`deploy/deploy.sh` keeps state in an S3 bucket named `litellm-gateway-tfstate-<account-id>-<region>` (override
-with `TF_STATE_BUCKET`) and creates it on the first run: versioning on, SSE-S3 encryption, public access blocked,
-bucket-owner-enforced ownership, TLS-only bucket policy, and native S3 state locking (no DynamoDB table). Each
-deployment's state lives under `<deployment_name>/`. The scripts refuse a bucket of that name owned by another
-account. Creating the bucket needs `s3:CreateBucket`, `s3:PutBucketVersioning`, `s3:PutEncryptionConfiguration`,
-`s3:PutBucketPublicAccessBlock`, `s3:PutBucketOwnershipControls`, `s3:PutBucketPolicy`, plus `s3:ListBucket`,
-object read and write on the bucket, and `sts:GetCallerIdentity`.
-
-### Service quotas
-
-Check these default quotas before the first deployment: Elastic IP addresses (one for the NAT gateway), VPCs per
-Region, Application Load Balancers per Region, and Fargate On-Demand vCPUs (enough for the maximum task count in
-the [architecture](../README.md#architecture)).
-
-### Customer managed KMS key (optional)
-
-With `kms_key_arn` set, the database, Redis, Secrets Manager secrets, CloudWatch log groups, the config and
-request-log buckets and the alarm topic are encrypted with your key. Terraform does not manage the key policy;
-it must allow:
-
-- the deploying principal to use the key;
-- `logs.<region>.amazonaws.com` `kms:Encrypt*`, `kms:Decrypt*`, `kms:GenerateDataKey*` and `kms:Describe*`
-  (otherwise creating the log groups fails with `AccessDeniedException`);
-- `cloudwatch.amazonaws.com` `kms:Decrypt` and `kms:GenerateDataKey*`, so alarms can publish to the encrypted
-  topic (without it the deploy succeeds but no alarm notification is delivered);
-- RDS and ElastiCache to use the key (they fail at creation with a KMS error otherwise).
-
-Secrets you create yourself (identity provider client secret, licence, provider API keys) must be encrypted with
-the AWS managed key `aws/secretsmanager` or with this same key; the task execution role can decrypt no other key.
-With `kms_key_arn = null` AWS managed keys are used and no key policy work is needed.
-
-## Trial deployment
+### Trial deployment
 
 > **For testing only.** The trial serves plain HTTP, is reachable only through a demo Client VPN that shares one
 > client certificate, and runs without a licence or identity provider. `allow_insecure_http` cannot be combined
@@ -165,7 +167,7 @@ When the trial is over, set `create_vpn = false` and run `deploy/deploy.sh`, or 
 ([teardown](#teardown)). The demo VPN is for testing only; use Direct Connect, Transit Gateway or your own VPN
 for regular access.
 
-## Recommended private deployment
+### Recommended private deployment
 
 The recommended deployment: the load balancer stays internal (`public_mode = false`, the default) and clients
 reach it over your own network.
@@ -203,7 +205,7 @@ HTTP on port 80 redirects to HTTPS. `client_cidrs` replaces the default VPC CIDR
 (on-premises via VPN or Direct Connect, other VPCs via Transit Gateway); `client_security_group_ids` admits
 security groups.
 
-### Your own VPC
+#### Your own VPC
 
 Set `vpc_id` and at least two `private_subnet_ids` in different Availability Zones. The plan validates them before
 creating anything: subnets in the VPC, truly private, enough free addresses for 20 tasks during a rolling deploy
@@ -211,13 +213,13 @@ plus the load balancer, endpoints and data stores, and DNS support and hostnames
 `create_vpc_endpoints_in_existing_vpc` adds the S3 gateway endpoint (and, with `create_interface_endpoints`, the
 interface endpoints) if the VPC lacks them.
 
-### Other clients of the data stores
+#### Other clients of the data stores
 
 `extra_data_ingress_security_group_ids` and `extra_data_ingress_cidrs` admit non-ECS clients to RDS and Redis.
 Redis requires TLS and its auth token (Secrets Manager, `redis_auth_secret_arn` output): connect with `rediss://`;
 plain `redis://` connections are refused, which looks like a timeout from naive clients.
 
-### No outbound internet access
+#### No outbound internet access
 
 The tasks pull the pinned image from `ghcr.io`, and the identity provider, the LiteLLM licence server and
 non-Bedrock providers are internet endpoints. The created VPC has a NAT gateway for this; Bedrock and the other
@@ -243,7 +245,7 @@ An identity provider is unreachable in this mode (the plan warns), as are the on
 non-Bedrock providers, unless you route them through an egress proxy (for example
 `extra_environment = { HTTPS_PROXY = "http://proxy:3128" }`).
 
-## Public deployment
+### Public deployment
 
 The load balancer becomes internet-facing in public subnets (created by the foundation, or `public_subnet_ids` in
 two Availability Zones for your own VPC) and AWS WAF is attached with the AWS managed common, known-bad-inputs and
@@ -266,7 +268,7 @@ public_mode = true
 > and WAF. The plan warns about it on every run but does not block it. Configure an
 > [identity provider](#identity-provider) for public deployments.
 
-## Identity provider
+### Identity provider
 
 Any OpenID Connect (OIDC) compliant identity provider can protect the UI. Two layers work together:
 
@@ -333,6 +335,14 @@ the UI password, the Redis auth token and the database password in Secrets Manag
 > **The salt key must never change.** LiteLLM uses it to encrypt the provider credentials stored in its database;
 > a new salt key would make them unreadable.
 
+### Terraform state
+
+`deploy/deploy.sh` keeps state in an S3 bucket named `litellm-gateway-tfstate-<account-id>-<region>` (override
+with `TF_STATE_BUCKET`) and creates it on the first run: versioning on, SSE-S3 encryption, public access blocked,
+bucket-owner-enforced ownership, TLS-only bucket policy, and native S3 state locking (no DynamoDB table). Each
+deployment's state lives under `<deployment_name>/`. The scripts refuse a bucket of that name owned by another
+account.
+
 ### Connect the trial VPN
 
 Trial deployments only. Wait until the Client VPN endpoint is `available` (several minutes after the apply
@@ -346,12 +356,25 @@ deploy/setup-vpn.sh profile --name llmgw --region <region>
 The `.ovpn` file contains the shared client private key; do not share or commit it. Connect the VPN and open the
 printed URL (`http://<internal-alb-dns-name>`).
 
-## Sign in to the UI
+## Verify and sign in
+
+### Smoke test
+
+```bash
+OUT=deploy/.generated/llmgw-foundation-outputs.tfvars.json   # llmgw = your deployment_name
+deploy/smoke-test.sh --key-secret-arn "$(jq -r .master_key_secret_arn "$OUT")" <gateway-url>
+```
+
+It checks liveliness, database connectivity, that a call without a key is refused, an authenticated call, and
+that the schema is migrated. The script fetches the key at runtime and does not print it. Add
+`--model <model_name>` once a model exists to run one completion; it checks for HTTP 200 only. `--insecure` skips
+TLS verification; `--help` lists every option.
+
+### Sign in to the UI
 
 The UI is at `<gateway-url>/ui`. Without LiteLLM SSO, sign in as `admin` with the generated UI password:
 
 ```bash
-OUT=deploy/.generated/llmgw-foundation-outputs.tfvars.json   # llmgw = your deployment_name
 aws secretsmanager get-secret-value --secret-id "$(jq -r .ui_password_secret_arn "$OUT")" \
   --query SecretString --output text
 ```
@@ -364,20 +387,7 @@ aws secretsmanager get-secret-value --secret-id "$(jq -r .ui_password_secret_arn
 Managing users, teams, virtual keys and budgets is covered in the
 [LiteLLM documentation](https://docs.litellm.ai/docs/proxy/virtual_keys).
 
-## Verify and add a first model
-
-### Smoke test
-
-```bash
-deploy/smoke-test.sh --key-secret-arn "$(jq -r .master_key_secret_arn "$OUT")" <gateway-url>
-```
-
-It checks liveliness, database connectivity, that a call without a key is refused, an authenticated call, and
-that the schema is migrated. The script fetches the key at runtime and does not print it. Add `--model <model_name>` once a
-model exists to run one completion; it checks for HTTP 200 only. `--insecure` skips TLS verification;
-`--help` lists every option.
-
-### Add a model
+## Add a first model
 
 The rendered configuration contains no models. Add them in the UI (**Models**) or through the
 [LiteLLM model management API](https://docs.litellm.ai/docs/proxy/model_management); they are stored in the
