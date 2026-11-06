@@ -30,6 +30,8 @@ locals {
       # 10 misses (about 5 minutes) before ECS replaces the task: a busy event
       # loop that misses a few probes is not killed with its in-flight streams;
       # the ALB health check already takes it out of rotation within ~90 s.
+      # A memory breach (container.tf) must likewise last about 5 minutes
+      # before the task is recycled.
       retries     = 10
       startPeriod = 60
     }
@@ -55,7 +57,7 @@ resource "aws_ecs_task_definition" "litellm" {
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = local.container.vcpus * 1024
-  memory                   = local.container.vcpus * 1024 * 2
+  memory                   = local.container.memory_mib
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
 
@@ -120,6 +122,12 @@ resource "aws_ecs_service" "litellm" {
   desired_count                     = local.scaling.desired
   launch_type                       = "FARGATE"
   health_check_grace_period_seconds = 120
+
+  # Room for a replacement task next to every running one: deploys roll
+  # without capacity loss, and a task that fails its container health check
+  # (container.tf: liveliness or memory recycle) is replaced before it stops.
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 100
 
   deployment_circuit_breaker {
     enable   = true

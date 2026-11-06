@@ -1,6 +1,31 @@
-# Container settings live in this ONE block: the ECS task definition and the
-# migration task are built from it, and any non-ECS runtime can mirror it.
-# Do not scatter image, port, env, secrets or health-check settings elsewhere.
+# Container settings live in this file: the ECS task definition and the
+# migration task are built from local.container, and any non-ECS runtime can
+# mirror it. Do not scatter image, port, env, secrets or health-check settings
+# elsewhere.
+
+# Task size and the container health check, outside local.container because
+# the health check derives its memory threshold from the task size.
+locals {
+  task_vcpus      = 2
+  task_memory_mib = local.task_vcpus * 2048 # 2 GiB per vCPU
+
+  # The health check (templates/healthcheck.py.tftpl) runs inline with the
+  # image's python3; nothing is added to the image. It is unhealthy when
+  # LiteLLM does not answer on its liveliness path (the ALB target group checks
+  # the same path), or when the whole task's memory, without reclaimable page
+  # cache, reaches memory_recycle_percent of the task memory. ECS then starts a
+  # replacement before it stops the task (ecs.tf: deployment maximum 200 %),
+  # and the old task drains, so memory that LiteLLM does not return over time
+  # is recycled instead of growing until the task runs out of memory. Above the
+  # 70 % memory scale-out target (ecs.tf), so a fresh task is not recycled.
+  # The memory part fails open when the task metadata endpoint is unavailable.
+  memory_recycle_percent = 90
+  health_check_script = replace(templatefile("${path.module}/templates/healthcheck.py.tftpl", {
+    liveliness_url = "http://localhost:4000/health/liveliness"
+    threshold_mib  = floor(local.task_memory_mib * local.memory_recycle_percent / 100)
+  }), "/(?m)^[ ]*#.*\n/", "") # comment lines dropped: the command stays short
+}
+
 locals {
   container = {
     # Official upstream image at the pinned upstream release, pinned by the
@@ -14,7 +39,8 @@ locals {
     # Graviton tasks with 2 vCPU and 4 GiB (memory is 2 GiB per vCPU); the
     # official image is multi-architecture.
     cpu_architecture = "ARM64"
-    vcpus            = 2
+    vcpus            = local.task_vcpus
+    memory_mib       = local.task_memory_mib
 
     image = coalesce(var.image_uri, "ghcr.io/berriai/litellm:v1.106.6@sha256:37e2dafb088a7723beb998590682957386dfc83ffea1848486f8e0e5cfac0b06")
     port  = 4000
@@ -56,9 +82,9 @@ locals {
       var.provider_secret_arns,
     )
 
-    # Liveliness probe (python3 ships in the image); the ALB target group checks the same path.
+    # Liveliness and memory-recycle health check (see local.health_check_script above).
     health_check_path    = "/health/liveliness"
-    health_check_command = ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=5)\" || exit 1"]
+    health_check_command = ["CMD-SHELL", "python3 -c \"${local.health_check_script}\" || exit 1"]
 
     # Drain window: 120 s (Fargate's maximum), aligned with the target
     # deregistration delay, so in-flight requests get this long to finish on a
