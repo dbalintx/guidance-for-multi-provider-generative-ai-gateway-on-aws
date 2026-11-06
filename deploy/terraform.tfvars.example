@@ -17,7 +17,7 @@
 # win over this file.
 #
 # Secrets NEVER go in this file: secret-valued inputs take Secrets Manager
-# ARNs, and no script reads or prints a secret value.
+# ARNs, and the scripts are designed not to print secret values.
 
 # --- Both root modules ---
 deployment_name = "llmgw" # prefix for every resource; unique per deployment in the account
@@ -30,7 +30,7 @@ tags            = {}      # your own tags, merged into the defaults
 # vpc_cidr                        = "10.0.0.0/16" # created VPC only; /24 or larger
 # disable_outbound_network_access = false         # no-internet mode: no IGW/NAT, VPC endpoints only (ghcr.io image pull needs egress — see docs/deployment.md); the app reads it to warn when an IdP is unreachable
 # egress_proxy_configured         = false         # only silences the no-egress warning
-# create_interface_endpoints      = false         # interface VPC endpoints despite egress (always on in no-internet mode; billed per hour and AZ)
+# create_interface_endpoints      = false         # interface VPC endpoints despite egress (created automatically in no-internet mode; billed per hour and AZ)
 
 # --- foundation: bring your own VPC ---
 # vpc_id                               = "vpc-0123456789abcdef0"
@@ -53,7 +53,7 @@ tags            = {}      # your own tags, merged into the defaults
 
 # --- app: TLS and DNS ---
 # certificate_arn     = "arn:aws:acm:..." # required unless allow_insecure_http
-# allow_insecure_http = false             # private proof of concept only; rejected in public mode
+# allow_insecure_http = false             # private trial only; rejected in public mode
 # hosted_zone_id      = null              # set both or neither
 # record_name         = null              # e.g. "llm.example.com"
 

@@ -80,7 +80,7 @@ variable "create_vpc_endpoints_in_existing_vpc" {
 }
 
 variable "create_interface_endpoints" {
-  description = "Create the interface VPC endpoints (Secrets Manager, ECR, CloudWatch Logs, STS, Bedrock runtime) even though the VPC has internet egress. Always on in no-internet mode. Each endpoint costs per hour per Availability Zone; with a NAT gateway the traffic works without them."
+  description = "Create the interface VPC endpoints (Secrets Manager, ECR, CloudWatch Logs, STS, Bedrock runtime) even though the VPC has internet egress. Created automatically in no-internet mode. Each endpoint costs per hour per Availability Zone; with a NAT gateway the traffic works without them."
   type        = bool
   default     = false
 }

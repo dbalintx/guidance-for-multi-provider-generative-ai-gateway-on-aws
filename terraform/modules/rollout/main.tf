@@ -7,7 +7,7 @@
 #    still loads the config it was deployed with.
 # 2. Run the schema migration as a one-off ECS task and fail the apply unless
 #    it exits 0. LiteLLM's health endpoints report healthy on an unmigrated
-#    database (verified on 1.82.3 and 1.106.0), so neither the circuit breaker
+#    database, so neither the circuit breaker
 #    nor the ALB health check would catch a missed migration; the service
 #    depends on this module and only rolls after it.
 #

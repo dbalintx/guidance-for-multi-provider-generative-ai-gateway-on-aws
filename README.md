@@ -1,9 +1,10 @@
 # Guidance for Multi-Provider Generative AI Gateway on AWS
 
-This Guidance runs the open-source [LiteLLM](https://docs.litellm.ai/) proxy as a private, highly available gateway
-in your AWS account, deployed with Terraform. Applications call one OpenAI-compatible endpoint; LiteLLM routes the
-calls to Amazon Bedrock and other model providers, and handles virtual API keys, teams, budgets, rate limits, spend
-tracking and its admin UI.
+This Guidance runs the open-source [LiteLLM](https://docs.litellm.ai/) proxy (MIT License; its `enterprise/`
+directory is under a separate licence) as a private gateway, designed for high availability, in your AWS account,
+deployed with Terraform. Applications call one OpenAI-compatible endpoint; LiteLLM routes the calls to Amazon
+Bedrock and other model providers, and handles virtual API keys, teams, budgets, rate limits, spend tracking and
+its admin UI.
 
 ## Table of contents
 
@@ -14,9 +15,9 @@ tracking and its admin UI.
 - [Cost](#cost)
   - [Cost Considerations](#cost-considerations)
   - [Cost Components](#cost-components)
+  - [Deployed Components](#deployed-components)
   - [Key Factors Influencing AWS Infrastructure Costs](#key-factors-influencing-aws-infrastructure-costs)
   - [Customer Responsibility](#customer-responsibility)
-  - [Sample Cost Tables](#sample-cost-tables)
 - [Security](#security)
 - [Repository structure](#repository-structure)
 - [Open source libraries](#open-source-libraries)
@@ -25,7 +26,7 @@ tracking and its admin UI.
 ## Project Overview
 
 The Guidance hosts the official, unmodified LiteLLM container image. It adds no code to the request path; it
-provides the AWS infrastructure, secure defaults and deployment scripts around it. Everything LiteLLM itself does
+provides the AWS infrastructure, security-focused defaults and deployment scripts around it. Everything LiteLLM itself does
 (models, keys, teams, budgets, guardrails, SSO) is described in the [LiteLLM documentation](https://docs.litellm.ai/).
 
 The foundation creates an empty AWS CloudFormation stack (`<deployment_name>-tracking-stack`) whose description
@@ -82,7 +83,7 @@ flowchart LR
 4. Amazon RDS for PostgreSQL stores keys, teams, budgets, spend and models added through the UI or API. Amazon
    ElastiCache (Redis OSS) holds shared rate-limit and routing state and the response cache.
 5. Generated credentials (master key, salt key, UI password, database URL, Redis token) live only in AWS Secrets
-   Manager and reach the tasks as secret references; they never appear in Terraform variables or state.
+   Manager and reach the tasks as secret references; the Guidance is designed to keep them out of Terraform variables and state.
 6. Terraform renders the LiteLLM configuration and stores it in Amazon S3; request metadata (not prompts or
    responses) is logged to S3; Amazon CloudWatch holds logs, alarms and a dashboard, with alarm notifications
    through Amazon SNS.
@@ -108,7 +109,7 @@ flowchart LR
 | [AWS Key Management Service (KMS)](https://aws.amazon.com/kms/) | Encryption keys for the data stores, logs and alarm topic. |
 | [AWS Certificate Manager (ACM)](https://aws.amazon.com/certificate-manager/) | TLS certificate for the load balancer. |
 | [Amazon Route 53](https://aws.amazon.com/route53/) | Optional DNS alias record for the gateway. |
-| [AWS WAF](https://aws.amazon.com/waf/) | Protects the load balancer in public mode. |
+| [AWS WAF](https://aws.amazon.com/waf/) | Helps protect the load balancer in public mode. |
 | [AWS Client VPN](https://aws.amazon.com/vpn/client-vpn/) | Optional demo access path for trial deployments. |
 | [Amazon Elastic Container Registry (ECR)](https://aws.amazon.com/ecr/) | Optional private copy of the LiteLLM image for deployments without internet access. |
 | [AWS CloudFormation](https://aws.amazon.com/cloudformation/) | Empty stack that counts deployments of this Guidance. |
@@ -125,7 +126,8 @@ WAF. Follow [docs/deployment.md](docs/deployment.md); every input and output is 
 ### Cost Considerations
 
 When implementing this Guidance on AWS, it is important to understand the factors that contribute to the overall
-cost. This section outlines the main cost components and the factors that influence them.
+cost. This section outlines the main cost components and the factors that influence them. Estimate the cost of
+your configuration in your Region with the [AWS Pricing Calculator](https://calculator.aws/).
 
 ### Cost Components
 
@@ -134,7 +136,34 @@ The total cost of running this Guidance falls into two components:
 1. **Model provider costs**: charges for Amazon Bedrock and any other model provider the gateway calls, typically
    based on the number of tokens processed, the model, and usage volume. The LiteLLM Enterprise licence, if you
    use one, is billed by its vendor.
-2. **AWS infrastructure costs**: the AWS resources that host and operate the gateway.
+2. **AWS infrastructure costs**: the AWS resources that host and operate the gateway, listed below.
+
+### Deployed Components
+
+A default deployment runs these resources around the clock:
+
+| AWS service | Resources |
+| --- | --- |
+| Amazon VPC | 1 NAT gateway with 1 public IPv4 address; the S3 gateway endpoint (no charge) |
+| Elastic Load Balancing | 1 Application Load Balancer |
+| Amazon ECS on AWS Fargate | 2 or more tasks (Linux/ARM, 2 vCPU, 4 GiB memory each) |
+| Amazon RDS for PostgreSQL | 1 `db.t4g.large` instance, Multi-AZ, gp3 storage from 20 GB, 30 days of backups |
+| Amazon ElastiCache (Redis OSS) | 2 `cache.t3.micro` nodes |
+| AWS Secrets Manager | 5 generated secrets, plus each secret you add (identity provider, licence, provider API keys) |
+| Amazon CloudWatch | Log groups with ten-year retention, alarms, 1 dashboard, Container Insights |
+| Amazon S3 | Config, request-log and access-log buckets |
+| AWS KMS | 1 key for the alarm topic (replaced by your key when `kms_key_arn` is set) |
+| AWS Certificate Manager | Your public certificate (no charge) |
+
+Optional components add to this:
+
+| AWS service | When |
+| --- | --- |
+| Interface VPC endpoints | `create_interface_endpoints` or `disable_outbound_network_access`: 6 endpoints, each billed per Availability Zone |
+| AWS WAF and public IPv4 addresses | Public mode: 1 web ACL with 4 rules, and public addresses for the internet-facing load balancer |
+| AWS Client VPN | Trial deployments with `create_vpn`: 1 subnet association, plus each connected client |
+| Amazon Route 53 | A hosted zone for `record_name`, if you do not have one |
+| Amazon ECR | A mirrored copy of the LiteLLM image |
 
 ### Key Factors Influencing AWS Infrastructure Costs
 
@@ -142,16 +171,14 @@ The actual cost depends on your configuration and usage patterns. The main facto
 
 1. **Compute**: the number of Fargate tasks. The service scales out under load (see
    [Architecture](#architecture)), so sustained traffic adds tasks.
-2. **Database**: the fixed Multi-AZ RDS instance, and its storage, which grows with keys, teams, users, budgets
-   and per-request spend records.
+2. **Database storage**: grows with keys, teams, users, budgets and per-request spend records.
 3. **Traffic patterns**: request and response sizes, requests and tokens per minute, concurrency, and the latency
    of the model providers, which keeps connections and tasks busy.
-4. **Caching**: cached responses avoid model provider calls.
-5. **Logging**: CloudWatch log ingestion and storage; logs are retained for ten years, so storage grows every
-   month. DEBUG logging multiplies the volume.
-6. **Networking**: NAT gateway hours and data processing for calls to non-Bedrock providers, data transfer, and
-   optional interface VPC endpoints (billed per endpoint and Availability Zone).
-7. **Optional components**: AWS WAF in public mode and the demo Client VPN.
+4. **Logging**: CloudWatch log ingestion and storage; with ten-year retention, storage grows every month. DEBUG
+   logging multiplies the volume.
+5. **Networking**: NAT gateway data processing for calls to non-Bedrock providers, data transfer, and interface
+   endpoint data processing.
+6. **Load balancer and WAF requests**: capacity units and, in public mode, WAF requests.
 
 This is not an exhaustive list, but it covers the main contributors.
 
@@ -166,41 +193,6 @@ While this Guidance provides default configurations, customers are responsible f
 We recommend creating a [budget](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-create.html)
 in [AWS Cost Explorer](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/) to help manage costs. Prices
 are subject to change; see the pricing page of each AWS service for full details.
-
-### Sample Cost Tables
-
-The following tables are estimates, made in November 2026 from published on-demand prices in the `us-east-1`
-(N. Virginia) Region, for one month (730 hours) of a private production deployment with the default sizing. They
-exclude model provider usage, taxes and the AWS Free Tier, and assume 100 GB of NAT data processing, 10 GB of
-CloudWatch log ingestion and 10 GB of S3 storage per month. Prices differ by Region; create your own estimate with
-the [AWS Pricing Calculator](https://calculator.aws/).
-
-#### Default deployment
-
-| AWS service | Dimensions | Cost, month [USD] |
-| --- | --- | --- |
-| Amazon VPC | 1 NAT gateway, 100 GB processed, 1 public IPv4 address | 41.00 |
-| Elastic Load Balancing | 1 Application Load Balancer, 1 LCU on average | 22.27 |
-| Amazon ECS on AWS Fargate | 2 tasks, Linux/ARM, 2 vCPU, 4 GiB memory, 20 GB ephemeral storage, 24 hours a day | 115.34 |
-| Amazon RDS for PostgreSQL | 1 `db.t4g.large` instance, Multi-AZ, 20 GB gp3 storage | 192.94 |
-| Amazon ElastiCache (Redis OSS) | 2 `cache.t3.micro` nodes | 24.82 |
-| AWS Secrets Manager | 5 generated secrets | 2.00 |
-| Amazon CloudWatch | 10 GB log ingestion and storage, about 22 alarms, 1 dashboard, Container Insights | 15.50 |
-| Amazon S3 | 10 GB standard storage, 100,000 PUT requests | 0.73 |
-| AWS KMS | 1 key for the alarm topic | 1.00 |
-| AWS Certificate Manager | 1 public certificate | free |
-| **TOTAL** | | **$415.60/month** |
-
-#### Optional components
-
-| AWS service | Dimensions | Cost, month [USD] |
-| --- | --- | --- |
-| Amazon VPC interface endpoints | 6 endpoints in 2 Availability Zones, excluding data processing | 87.60 |
-| AWS WAF and public IPv4 (public mode) | 1 web ACL, 4 rules, 1 million requests; 2 public IPv4 addresses for the load balancer | 16.90 |
-| AWS Client VPN (trial) | 1 subnet association, 1 client connected 176 hours | 81.80 |
-| Amazon Route 53 | 1 hosted zone (alias queries to the load balancer are free) | 0.50 |
-| AWS KMS | 1 customer managed key (`kms_key_arn`), replaces the alarm-topic key | 0.00 |
-| Additional Secrets Manager secrets | Identity provider client secret, licence, provider API keys | 0.40 each |
 
 ## Security
 
@@ -256,13 +248,13 @@ identity provider and DEBUG logging also print a warning on every plan. To repor
 
 ### Container Security
 
-- **Pinned image**: the official LiteLLM image is pinned by digest, so every task runs exactly the reviewed image.
+- **Pinned image**: the official LiteLLM image is pinned by digest, so tasks run the reviewed image even if its tag is re-pushed.
 - **Mirroring**: `deploy/mirror-image.sh` verifies the upstream image signature before copying it into Amazon ECR.
 
 ### Secrets Management
 
 - **AWS Secrets Manager**: credentials are generated at the first deployment and written with Terraform
-  write-only arguments, so they never appear in Terraform variables, plans or state. Secrets you add are passed as
+  write-only arguments, which are designed to keep them out of Terraform variables, plans and state. Secrets you add are passed as
   Secrets Manager ARNs; only the identity provider client secret reaches the Terraform state (see
   [Identity provider](docs/deployment.md#identity-provider)).
 
@@ -279,7 +271,7 @@ identity provider and DEBUG logging also print a warning on every plan. To repor
 | --- | --- |
 | [`terraform/foundation`](terraform/foundation) | Long-lived network and data: VPC, RDS, Redis, Secrets Manager, config bucket, optional demo Client VPN. |
 | [`terraform/app`](terraform/app) | Load balancer, WAF, ECS service and migration task, LiteLLM configuration, IAM, logs, alarms. |
-| [`terraform/modules`](terraform/modules/README.md) | Child modules: [observability](terraform/modules/observability/README.md), [rollout](terraform/modules/rollout/README.md) and vpn. |
+| [`terraform/modules`](terraform/modules/README.md) | Child modules: observability, rollout and vpn. |
 | [`deploy`](deploy) | Deployment scripts and the `terraform.tfvars.example` input file. |
 | [`docs`](docs) | [Deployment guide](docs/deployment.md) and [configuration reference](docs/configuration.md). |
 | [`examples/agentcore`](examples/agentcore/README.md) | An agent on Amazon Bedrock AgentCore Runtime that does all of its inference through the gateway. |

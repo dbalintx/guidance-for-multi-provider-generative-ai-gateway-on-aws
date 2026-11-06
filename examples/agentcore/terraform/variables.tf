@@ -32,7 +32,7 @@ variable "gateway_url" {
 }
 
 variable "master_key_secret_arn" {
-  description = "Gateway foundation output master_key_secret_arn. Read only by scripts/agent-key.sh, on the operator's machine, to create and delete the agent's virtual key; the agent never gets it."
+  description = "Gateway foundation output master_key_secret_arn. Read only by scripts/agent-key.sh, on the operator's machine, to create and delete the agent's virtual key; the agent does not receive it."
   type        = string
 
   validation {

@@ -5,8 +5,7 @@
 environment_variables:
   STORE_MODEL_IN_DB: "True"
   # Do not set LITELLM_LOG here: it would override the log_level Terraform input.
-  # At DEBUG, LiteLLM writes every prompt and response to the logs (verified on
-  # 1.82.3 and 1.106.0).
+  # At DEBUG, LiteLLM writes every prompt and response to the logs.
 
 general_settings:
   # The ALB is the reverse proxy LiteLLM 1.106 expects to be told about:
