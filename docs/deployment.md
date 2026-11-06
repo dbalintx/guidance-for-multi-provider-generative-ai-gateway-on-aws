@@ -12,6 +12,7 @@ This page takes you from an empty AWS account to a verified gateway. Every input
 - [Deploy](#deploy)
 - [Sign in to the UI](#sign-in-to-the-ui)
 - [Verify and add a first model](#verify-and-add-a-first-model)
+- [Teardown](#teardown)
 
 ## Choose a deployment
 
@@ -160,8 +161,8 @@ VPN clients get addresses from `vpn_client_cidr` (default `10.250.0.0/22`), whic
 VPN is split-tunnel and authorised for the VPC range only. Then [deploy](#deploy) and
 [connect the VPN](#connect-the-trial-vpn).
 
-When the trial is over, set `create_vpn = false` and run `deploy/deploy.sh`, or remove the whole deployment with
-`deploy/undeploy.sh`. The demo VPN is not a production access path.
+When the trial is over, set `create_vpn = false` and run `deploy/deploy.sh`, or remove the whole deployment
+([teardown](#teardown)). The demo VPN is not a production access path.
 
 ## Private production deployment
 
@@ -422,3 +423,10 @@ Models newer than the image show $0 cost: the tasks use the model price list bun
 (`LITELLM_LOCAL_MODEL_COST_MAP`, no download at start-up). A model released after that image records spend as $0
 until a newer image is deployed or you set its price in `model_info`
 ([custom pricing](https://docs.litellm.ai/docs/proxy/custom_pricing)).
+
+## Teardown
+
+Set `deletion_protection = false` in `deploy/terraform.tfvars` and run `deploy/deploy.sh`, then run
+`deploy/undeploy.sh`. It destroys the app, then the foundation, asking for confirmation before each destroy. The
+database still leaves a final snapshot (unless `destroy_data_without_snapshot = true`), and the Terraform state
+bucket is kept.
