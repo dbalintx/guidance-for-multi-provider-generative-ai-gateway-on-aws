@@ -26,7 +26,6 @@ locust driver (EC2, SSM) ──> gateway ALB ──> LiteLLM tasks ──> inter
 | `locust/locustfile.py` | Scenario: closed-loop users (one request in flight each), stream/non-stream mix, cache-busting prompts, optional step profile, per-request JSONL log |
 | `terraform/` | Fake upstream (Fargate + internal NLB), driver (EC2, no inbound), artifacts bucket, key secret |
 | `scripts/gateway.sh` | Registers the fake models and a virtual key on the gateway; removes them |
-| `bedrock_compare/compare.py` | The same short requests sent directly to Amazon Bedrock (Converse/ConverseStream) and through the gateway, interleaved: gateway overhead on TTFT and total time |
 | `scripts/driver.sh` | Starts, checks, fetches and stops runs on the driver through SSM |
 
 ## Prerequisites
@@ -36,8 +35,7 @@ locust driver (EC2, SSM) ──> gateway ALB ──> LiteLLM tasks ──> inter
   for the admin API (`scripts/gateway.sh`).
 - Private subnets with outbound internet access (NAT): the fake upstream
   installs [aiohttp](https://github.com/aio-libs/aiohttp) (Apache License 2.0)
-  from PyPI, the driver installs locust and
-  [boto3](https://github.com/boto/boto3) (Apache License 2.0).
+  from PyPI, the driver installs locust.
 - Terraform >= 1.11, the AWS CLI, `jq`, `curl`; Python 3.11+ with
   `pip install -r requirements.txt` for the tests.
 
@@ -107,28 +105,6 @@ repeated and the gateway's response cache (Redis) is bypassed.
 
 The user count is the number of requests in flight: each user sends one request,
 waits for the whole response (or stream), thinks, and repeats.
-
-### Gateway overhead against direct Bedrock
-
-Set `bedrock_model_ids = ["<model id>"]` (an in-region, on-demand foundation
-model) in the tfvars: the driver may then call that model, and only that one.
-Register the same model on the gateway and run the comparison:
-
-```bash
-BEDROCK_MODEL=<model id> scripts/gateway.sh setup        # adds <prefix>-bedrock
-scripts/driver.sh run compare TOOL=compare MODEL=<prefix>-bedrock BEDROCK_MODEL=<model id> \
-  SAMPLES=300 CONCURRENCY=1,4 MAX_TOKENS=64 MAX_RPM=180
-```
-
-Each round sends the same number of requests per path (direct, gateway) and
-mode (streaming, not), in a shuffled order; `results/<run>/compare.jsonl` has
-one line per request (`path`, `stream`, `concurrency`, `ttft_ms`, `total_ms`,
-`overhead_ms`, tokens, `error`). Compare the percentiles per path. Keep
-`MAX_RPM` below the account's on-demand requests-per-minute quota for the model
-(Service Quotas, Amazon Bedrock): throttled requests are retried by both the
-SDK and LiteLLM, and retry waits can then dominate the tails. Prompts are short
-and `MAX_TOKENS` is small to keep the token cost low (4 x `SAMPLES` requests per
-concurrency level).
 
 ## Read the results
 

@@ -18,6 +18,7 @@ is pulled unmodified from its upstream source at deployment, build or test time.
 | [Strands Agents](https://github.com/strands-agents/harness-sdk) (`strands-agents`) | Agent framework | [Apache License 2.0](https://github.com/strands-agents/harness-sdk/blob/main/LICENSE.APACHE) |
 | [Amazon Bedrock AgentCore SDK](https://github.com/aws/bedrock-agentcore-sdk-python) (`bedrock-agentcore`) | AgentCore Runtime and Identity integration | [Apache License 2.0](https://github.com/aws/bedrock-agentcore-sdk-python/blob/main/LICENSE.txt) |
 | [OpenAI Python library](https://github.com/openai/openai-python) (`openai`) | OpenAI-compatible client for the gateway | [Apache License 2.0](https://github.com/openai/openai-python/blob/main/LICENSE) |
+| [Boto3](https://github.com/boto/boto3) | AWS API calls in `scripts/invoke.py` of the AgentCore example | [Apache License 2.0](https://github.com/boto/boto3/blob/develop/LICENSE) |
 
 ## Load test
 
@@ -25,7 +26,6 @@ is pulled unmodified from its upstream source at deployment, build or test time.
 | --- | --- | --- |
 | [Locust](https://github.com/locustio/locust) | Load generation | [MIT License](https://github.com/locustio/locust/blob/master/LICENSE) |
 | [aiohttp](https://github.com/aio-libs/aiohttp) | Stand-in model provider | [Apache License 2.0](https://github.com/aio-libs/aiohttp/blob/master/LICENSE.txt) |
-| [Boto3](https://github.com/boto/boto3) | AWS API calls (also `scripts/invoke.py` of the AgentCore example) | [Apache License 2.0](https://github.com/boto/boto3/blob/develop/LICENSE) |
 
 ## Development and test tooling
 

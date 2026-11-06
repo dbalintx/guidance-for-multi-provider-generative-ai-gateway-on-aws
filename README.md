@@ -79,7 +79,9 @@ flowchart LR
 3. LiteLLM runs on Amazon ECS on AWS Fargate (Graviton, two tasks minimum across two Availability Zones, CPU and
    memory target-tracking scaling up to 20 tasks). Every rollout first runs the database schema migration as a
    one-off task; the service only rolls if it succeeds, and the deployment circuit breaker rolls back a failed
-   rollout.
+   rollout. The container health check also fails when the task's memory, without reclaimable page cache, stays
+   at 90 % of the task memory for about five minutes; ECS then starts a replacement before it stops and drains
+   the task, because LiteLLM can hold on to memory it no longer uses.
 4. Amazon RDS for PostgreSQL stores keys, teams, budgets, spend and models added through the UI or API. Amazon
    ElastiCache (Redis OSS) holds shared rate-limit and routing state and the response cache.
 5. Generated credentials (master key, salt key, UI password, database URL, Redis token) live only in AWS Secrets

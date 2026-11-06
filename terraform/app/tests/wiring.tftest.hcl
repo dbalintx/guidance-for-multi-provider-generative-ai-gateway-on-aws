@@ -247,6 +247,33 @@ run "private_defaults" {
     error_message = "The container must have a real health check against the liveliness path."
   }
 
+  # The health check is the template, rendered with the liveliness URL and 90 %
+  # of the 4096 MiB task, comment lines dropped, inside python3 -c "...".
+  # tests/test_healthcheck.py renders it the same way and runs it.
+  assert {
+    condition = jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].healthCheck.command == [
+      "CMD-SHELL",
+      "python3 -c \"${replace(templatefile("${path.module}/templates/healthcheck.py.tftpl", {
+        liveliness_url = "http://localhost:4000/health/liveliness"
+        threshold_mib  = 3686
+      }), "/(?m)^[ ]*#.*\n/", "")}\" || exit 1",
+    ]
+    error_message = "The health check must be the rendered template: liveliness, then the task memory at 3686 MiB (90 % of 4096)."
+  }
+
+  assert {
+    condition = alltrue([
+      for line in split("\n", jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].healthCheck.command[1]) :
+      !startswith(trimspace(line), "#")
+    ]) && length(regexall("[`$\\\\]", trimprefix(trimsuffix(jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].healthCheck.command[1], "\" || exit 1"), "python3 -c \""))) == 0
+    error_message = "The inline script must hold no comment lines, backticks, dollar signs or backslashes (it sits in a double-quoted shell string)."
+  }
+
+  assert {
+    condition     = aws_ecs_task_definition.litellm.memory == "4096" && aws_ecs_service.litellm.deployment_maximum_percent == 200 && aws_ecs_service.litellm.deployment_minimum_healthy_percent == 100
+    error_message = "4096 MiB tasks; a replacement must fit next to every running task (maximum 200 %, minimum healthy 100 %)."
+  }
+
   assert {
     condition     = !contains([for s in jsondecode(aws_ecs_task_definition.litellm.container_definitions)[0].secrets : s.name], "LITELLM_LICENSE")
     error_message = "LITELLM_LICENSE must not be set without a licence secret."

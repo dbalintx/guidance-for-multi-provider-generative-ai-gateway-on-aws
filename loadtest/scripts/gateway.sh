@@ -7,9 +7,7 @@
 #
 # setup: adds model <prefix>-fake (api_base = the fake upstream, terraform
 # output fake_api_base), plus <prefix>-fake-instant (no delays, for measuring
-# gateway overhead), and with BEDROCK_MODEL=<foundation model id> also
-# <prefix>-bedrock (that Bedrock model in the gateway's region, for
-# bedrock_compare/); generates a virtual key aliased <prefix>-driver limited to
+# gateway overhead), generates a virtual key aliased <prefix>-driver limited to
 # them, and stores the key in the driver's secret (output api_key_secret_id).
 # teardown: deletes every model and key whose name/alias starts with <prefix>-.
 # PREFIX defaults to the terraform name_prefix. The master key is read from
@@ -47,13 +45,6 @@ case "${1:-}" in
     add_model "${PREFIX}-fake" "$base"
     add_model "${PREFIX}-fake-instant" "${base%/v1}/p/0/0/20/v1"
     models="$(jq -cn --arg p "$PREFIX" '[$p + "-fake", $p + "-fake-instant"]')"
-    if [ -n "${BEDROCK_MODEL:-}" ]; then
-      region="${AWS_REGION:-$(aws configure get region)}"
-      api POST /model/new "$(jq -cn --arg n "${PREFIX}-bedrock" --arg m "bedrock/converse/${BEDROCK_MODEL}" --arg r "$region" \
-        '{model_name: $n, litellm_params: {model: $m, aws_region_name: $r}}')" >/dev/null
-      echo "model ${PREFIX}-bedrock -> ${BEDROCK_MODEL} (${region})"
-      models="$(jq -c --arg n "${PREFIX}-bedrock" '. + [$n]' <<<"$models")"
-    fi
     api POST /key/generate "$(jq -cn --arg a "${PREFIX}-driver" --argjson m "$models" \
       '{key_alias: $a, models: $m, duration: "7d", metadata: {purpose: "load test"}}')" |
       jq -r .key >"${TMP}/key"
@@ -76,5 +67,5 @@ case "${1:-}" in
       api POST /key/delete "$(jq -cn --arg t "$token" '{keys: [$t]}')" >/dev/null && echo "deleted key ${token:0:8}..."
     done
     ;;
-  *) sed -n '2,16p' "$0"; exit 2 ;;
+  *) sed -n '2,14p' "$0"; exit 2 ;;
 esac
