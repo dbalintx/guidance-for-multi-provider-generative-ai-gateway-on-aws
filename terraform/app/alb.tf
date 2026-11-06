@@ -85,7 +85,7 @@ resource "aws_lb_listener" "http" {
     }
   }
 
-  # Private proof of concept without a certificate: plain HTTP straight to LiteLLM.
+  # Private trial without a certificate: plain HTTP straight to LiteLLM.
   dynamic "default_action" {
     for_each = local.serve_http ? [1] : []
     content {
@@ -97,8 +97,8 @@ resource "aws_lb_listener" "http" {
 
 # Unconditional in both modes when an identity provider is set.
 # The OIDC action only works for browsers, so it covers the UI and every
-# interactive sign-in route of the pinned LiteLLM release (enumerated from the
-# v1.106.6 proxy routes): the UI itself, LiteLLM's own SSO, the username/password
+# interactive sign-in route of the pinned LiteLLM release (enumerated from its
+# proxy routes; re-check on upgrade): the UI itself, LiteLLM's own SSO, the username/password
 # logins (v1, v2, v3 and the v3 code exchange), the fallback login, invitation
 # onboarding and the UI discovery document. API routes (including MCP OAuth for
 # programmatic clients) stay on LiteLLM key authentication. Re-check this list

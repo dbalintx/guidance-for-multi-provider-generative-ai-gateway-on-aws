@@ -1,5 +1,5 @@
-# LiteLLM (JSON_LOGS=True) writes one JSON object per line with a "level" field. Verified against
-# ghcr.io/berriai/litellm:v1.106.0: upstream provider failures and auth failures log level=ERROR.
+# LiteLLM (JSON_LOGS=True) writes one JSON object per line with a "level" field; upstream provider
+# failures and authentication failures are logged with level=ERROR.
 # Per-request cost and latency are NOT logged at INFO, so no filters are derived for them.
 resource "aws_cloudwatch_log_metric_filter" "errors" {
   count = var.enable_log_metrics ? 1 : 0

@@ -10,7 +10,7 @@ call shows up in the gateway's spend logs under that key.
 It consumes the gateway as plain inputs (URL, VPC, subnets, master key secret
 ARN) and does not modify the gateway's stacks.
 
-```
+```text
  caller (SigV4)                         AWS account
  ─────────────►  AgentCore Runtime (VPC mode, gateway's private subnets)
                  ┌───────────────────────────────────────┐
@@ -37,8 +37,8 @@ ARN) and does not modify the gateway's stacks.
   API-key credential provider points at that secret; the agent obtains the key
   per request by exchanging the workload access token AgentCore Runtime issues
   for the invocation. The key is not in environment variables, the code bundle,
-  Terraform variables or Terraform state, and the runtime never gets the master
-  key.
+  Terraform variables or Terraform state, and the runtime does not receive the
+  master key.
 - **Network.** The runtime runs in the gateway's VPC (VPC network mode), so it
   reaches a private, internal gateway. Its security group allows the gateway
   port towards the gateway's CIDR and HTTPS towards AWS APIs (through the VPC's
@@ -47,7 +47,10 @@ ARN) and does not modify the gateway's stacks.
 - **Deployment.** Direct code deployment: `scripts/build.sh` builds a zip of
   the agent and its dependencies for the runtime's platform (Linux arm64,
   Python 3.13); Terraform uploads it to S3 and creates the runtime from it. No
-  container build is needed.
+  container build is needed. Agent code, configuration and other content that
+  you create and upload are "Your Content" as defined in the
+  [AWS Customer Agreement](https://aws.amazon.com/agreement/). AWS does not
+  claim ownership of it.
 
 ## Prerequisites
 
@@ -79,6 +82,11 @@ export AWS_REGION=<gateway region>
 scripts/deploy.sh            # shows the plan and asks for confirmation
 ```
 
+The gateway outputs are described in the gateway's
+[configuration reference](../../docs/configuration.md#outputs); the foundation
+outputs are also saved in
+`deploy/.generated/<deployment_name>-foundation-outputs.tfvars.json`.
+
 `deploy.sh` builds the bundle and runs `terraform apply`. During the apply,
 Terraform runs `scripts/agent-key.sh create`, which creates the agent's
 virtual key in LiteLLM (only if the agent has no working key) and stores it.
@@ -87,7 +95,7 @@ Rerunning `deploy.sh` updates the agent; an unchanged agent is a no-op.
 Resources created (all named after `name`, default `llmgw-agent-demo`):
 
 | Resource | Name |
-|---|---|
+| --- | --- |
 | AgentCore runtime (and its default endpoint and workload identity) | `llmgw_agent_demo` (runtime names allow no hyphens) |
 | AgentCore Identity API-key credential provider | `llmgw-agent-demo-gateway` |
 | Secrets Manager secret with the virtual key | `llmgw-agent-demo-gateway-key` |
@@ -113,7 +121,8 @@ python3 scripts/invoke.py "How many words are in 'the quick brown fox'? Use your
 The region is `--region`, else `AWS_REGION`, else `AWS_DEFAULT_REGION`, else
 the region in the runtime ARN. Callers need `bedrock-agentcore:InvokeAgentRuntime` and
 `bedrock-agentcore:InvokeAgentRuntimeForUser` on the runtime. A SigV4 caller
-must pass a runtime user ID (`runtimeUserId`, `invoke.py --user-id`): AgentCore
+must pass a runtime user ID (`runtimeUserId`; `invoke.py --user-id`, default
+`example-user`): AgentCore
 Runtime issues the invocation's workload access token for it, and without that
 token the agent cannot obtain its gateway key (it answers with an error).
 
@@ -188,7 +197,7 @@ terraform -chdir=terraform test
   visible to anyone who can describe the runtime. The credential provider keeps
   the key in a secret that only the runtime role can read, behind a per-request
   workload access token. The secret is created and owned by this example
-  (`EXTERNAL` secret source), so the key never enters Terraform state, and can
+  (`EXTERNAL` secret source), so the key is kept out of Terraform state, and can
   be rotated without redeploying.
 - **Fronting the agent with LiteLLM (Agents).** This example governs the
   agent's outbound model calls. To also govern who may call the agent, consider

@@ -26,7 +26,7 @@ deploy/terraform.tfvars:
   image_uri = "<the URI this script prints>"
 
 Options:
-  --version <tag>      Image tag to copy, e.g. v1.106.6. Default: the tag
+  --version <tag>      Image tag to copy, e.g. v1.2.3. Default: the tag
                        pinned in terraform/app/container.tf.
   --platform <os/arch> Platform to copy. Default linux/arm64, the gateway
                        tasks' architecture (Graviton); linux/amd64 is offered
@@ -93,7 +93,7 @@ if [ -z "$VERSION" ]; then
   VERSION="$(sed -n 's|.*"ghcr\.io/berriai/litellm:\([^"@]*\)[@"].*|\1|p' "$CONTAINER_TF" | head -n 1)"
   [ -n "$VERSION" ] || usage_error "--version is required (no pinned tag found in terraform/app/container.tf)."
 fi
-[[ "$VERSION" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || usage_error "--version must be an image tag, e.g. v1.106.6."
+[[ "$VERSION" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || usage_error "--version must be an image tag, e.g. v1.2.3."
 [[ "$PLATFORM" =~ ^linux/(arm64|amd64)$ ]] || usage_error "--platform must be linux/arm64 or linux/amd64."
 [[ "$REPOSITORY" =~ ^[a-z0-9]+([._/-][a-z0-9]+)*$ ]] || usage_error "--repository must be a lowercase repository name."
 

@@ -1,5 +1,5 @@
 # Optional demo Client VPN (certificate-based mutual TLS). Demo and trial use
-# only — production access belongs on Direct Connect or Transit Gateway.
+# only; use Direct Connect, Transit Gateway or your own VPN for regular access.
 #
 # Certificates are created and imported into ACM by deploy/setup-vpn.sh so
 # that no private key ever passes through Terraform state. One shared client

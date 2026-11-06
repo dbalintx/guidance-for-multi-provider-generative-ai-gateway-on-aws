@@ -80,7 +80,7 @@ variable "create_vpc_endpoints_in_existing_vpc" {
 }
 
 variable "create_interface_endpoints" {
-  description = "Create the interface VPC endpoints (Secrets Manager, ECR, CloudWatch Logs, STS, Bedrock runtime) even though the VPC has internet egress. Always on in no-internet mode. Each endpoint costs per hour per Availability Zone; with a NAT gateway the traffic works without them."
+  description = "Create the interface VPC endpoints (Secrets Manager, ECR, CloudWatch Logs, STS, Bedrock runtime) even though the VPC has internet egress. Created automatically in no-internet mode. Each endpoint costs per hour per Availability Zone; with a NAT gateway the traffic works without them."
   type        = bool
   default     = false
 }
@@ -134,7 +134,7 @@ variable "destroy_data_without_snapshot" {
 # --- Optional demo Client VPN (terraform/modules/vpn) ---
 
 variable "create_vpn" {
-  description = "Create the demo/test Client VPN into the VPC (mutual TLS, split tunnel, VPC range only). Not a production access path. Run deploy/setup-vpn.sh certs first for the two certificate ARNs."
+  description = "Create the demo/test Client VPN into the VPC (mutual TLS, split tunnel, VPC range only). For testing only; use Direct Connect, Transit Gateway or your own VPN for regular access. Run deploy/setup-vpn.sh certs first for the two certificate ARNs."
   type        = bool
   default     = false
 }

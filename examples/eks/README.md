@@ -1,217 +1,199 @@
-# The gateway on Amazon EKS (non-production starting point)
+# Guidance: running the gateway on Amazon EKS
 
-This example runs the same LiteLLM container on an existing Amazon EKS cluster,
-against the gateway's foundation (VPC, RDS PostgreSQL, Redis, Secrets Manager).
-It shows that the gateway is not tied to ECS and gives Kubernetes users a small,
-readable starting point. **It is not a production deployment**: the production
-path is the ECS Fargate service in `terraform/app`. See
-[what ECS has that this lacks](#what-ecs-has-that-this-lacks).
+> [!IMPORTANT]
+> This page is guidance, not a tested or supported deployment. The Guidance deploys and tests the gateway on
+> Amazon ECS (`terraform/app`) only. The snippets below are illustrative excerpts and have not been tested; adapt
+> and test them in your own environment before use.
 
-What it is:
+The gateway's state lives in the foundation stack (`terraform/foundation`): VPC, RDS PostgreSQL, Redis, Secrets
+Manager and the config bucket. The ECS app stack is one consumer of it. An EKS version replaces the app stack and
+leaves the foundation as it is: it runs the same official LiteLLM image against the same data stores and secrets.
 
-- plain Kubernetes manifests (`manifests/`), applied with `kubectl` by one
-  script; no Helm chart and no Terraform Kubernetes or Helm provider;
-- a small Terraform root module (`terraform/`, AWS provider only) for the pods'
-  IAM role, its EKS Pod Identity association, a request-log bucket and the
-  rendered LiteLLM config;
-- bring-your-own cluster: the example never creates or changes a cluster, its
-  add-ons, node groups or a load-balancer controller.
+## The interface: foundation outputs
 
-```
- kubectl port-forward            EKS cluster (in the gateway's VPC)
- (or your own ingress) ─────►  ┌─────────────────────────────────────────┐
-                               │ namespace litellm                       │
-                               │  Service litellm (ClusterIP :4000)      │
-                               │   └► Deployment litellm (2 pods) ───────┼──► Amazon Bedrock (Pod Identity role)
-                               │  Job litellm-migrate (before a rollout) │
-                               │  ConfigMap litellm-config-<sha16>       │──► S3 request logs
-                               │  Secret litellm-secrets ◄───────────────┼─── Secrets Manager (copied by deploy.sh)
-                               └───────────────┬─────────────────────────┘
-                                               └──► RDS PostgreSQL, Redis (foundation; admitted via
-                                                    extra_data_ingress_security_group_ids)
-```
+Everything an EKS app stack needs comes from the foundation outputs (`terraform -chdir=terraform/foundation output`,
+or `deploy/.generated/<deployment_name>-foundation-outputs.tfvars.json` after `deploy/deploy.sh`):
 
-## How it works
-
-- **Same container settings as ECS.** `manifests/deployment.yaml` is the
-  Kubernetes form of the single settings block in `terraform/app/container.tf`:
-  image, port, environment, secret names, health-check path and stop timeout.
-  The image is not repeated: `scripts/render.py` reads the `tag@digest` pinned
-  in `container.tf`, so upgrading the gateway upgrades this example on its next
-  deploy. `scripts/tests/test_render.py` fails when the manifests and
-  `container.tf` drift apart.
-- **Config as a ConfigMap.** Terraform renders LiteLLM's `config.yaml` from the
-  gateway's own template (`terraform/app/templates/config-base.yaml.tftpl`), the
-  same way `terraform/app/config.tf` does. The ConfigMap is named after the
-  config's hash and `LITELLM_CONFIG_SHA` carries the hash, so a config change
-  rolls the pods and every ReplicaSet keeps the config it was rolled out with.
-  Fetching the ECS deployment's object from the config bucket was rejected: it
-  would make this example depend on the ECS app being deployed, give the pods
-  read access to the bucket and tie them to the ECS deployment's request-log
-  bucket. The request logs go to a bucket of this example instead.
-- **Secrets.** `scripts/deploy.sh` reads the five generated values (database
-  URL, master key, salt key, Redis token, UI password) from Secrets Manager
-  and writes them into the Kubernetes Secret `litellm-secrets`, with
-  server-side apply (no copy in a last-applied annotation). They are never
-  printed and never passed as process arguments.
-- **Migration gate.** As on ECS, the pods run with `DISABLE_SCHEMA_UPDATE=true`
-  and only a one-off migration (`manifests/migrate-job.yaml`, same image,
-  environment and config, `--skip_server_startup`) updates the schema.
-  `deploy.sh` deletes the previous Job, runs it once (no retries, 20-minute
-  limit) and applies the Deployment only after it completes. LiteLLM reports
-  healthy on an unmigrated database, so health checks cannot replace the gate.
-- **AWS access: EKS Pod Identity.** The pods get an IAM role equivalent to the
-  ECS task role with its default scope: Bedrock inference and guardrails, and
-  write-only access to the request-log bucket. Nothing else: the config is a
-  ConfigMap and the secrets are a Kubernetes Secret, so no S3 read and no
-  Secrets Manager access. The trust policy admits only `pods.eks.amazonaws.com`
-  for this account and cluster; the association binds the role to one
-  namespace and service account. Pod Identity was chosen over IAM roles for
-  service accounts (IRSA) because it needs no per-cluster OIDC identity
-  provider in IAM, no cluster-specific trust policy and no service-account
-  annotation; the binding is an EKS API object that Terraform manages with the
-  AWS provider. It needs the EKS Pod Identity Agent (built into EKS Auto Mode,
-  an add-on otherwise) and does not work for pods on AWS Fargate.
-- **The only change to the gateway** is the foundation's generic
-  `extra_data_ingress_security_group_ids` input, which admits the cluster's
-  security group to RDS and Redis.
-
-## What ECS has that this lacks
-
-| ECS deployment (`terraform/app`) | This example |
+| Output | Used for |
 | --- | --- |
-| Application Load Balancer with TLS (ACM), access logs and OIDC sign-in in front of the UI paths | A ClusterIP Service only. Exposing it (an ingress controller or load balancer, TLS, sign-in) is left to the cluster's owner. |
-| AWS WAF on the internet-facing load balancer (public mode) | None. |
-| Rollout in one `terraform apply`: config upload, migration task, then the service; the deployment circuit breaker rolls back a failed rollout | `deploy.sh` gates the Deployment on the migration Job. A failed rollout stops (`maxUnavailable: 0`, the old pods keep serving) but is not rolled back automatically (`kubectl rollout undo`). Changes made with `kubectl` outside `deploy.sh` skip the gate. |
-| Secrets stay in Secrets Manager; ECS injects them at task start | Copied into a Kubernetes Secret: readable by anyone who may read Secrets in the namespace; after a rotation, rerun `deploy.sh` (it restarts the pods). |
-| CloudWatch log group, alarms, dashboard and SNS notifications (`terraform/modules/observability`) | Logs go to the container's stdout; collecting them, metrics and alarms depend on the cluster's own setup. |
-| CPU and memory target-tracking auto scaling, 2 to 20 tasks, sized against the database connection alarm | Two replicas, no HorizontalPodAutoscaler, no PodDisruptionBudget. |
-| Drain tuning: 120 s stop timeout aligned with the target deregistration delay; uvicorn keep-alive (605 s) above the 600 s ALB idle timeout | Same 120 s for LiteLLM after SIGTERM, preceded by a 10 s `preStop` pause so the endpoint removal propagates. Any proxy you add needs its own deregistration delay and an idle timeout below 605 s. |
-| `config_override_file`, licence and provider secrets, Bedrock model and region allowlists, cross-account roles, `image_uri` | Not wired, except a mirrored image through `IMAGE` (pinned by digest). Models added in the UI or API live in the shared database and work here too. |
+| `vpc_id`, `private_subnet_ids`, `vpc_cidr` | Where the cluster's nodes run; the trusted proxy range in the config |
+| `redis_endpoint`, `redis_port` | `REDIS_HOST`, `REDIS_PORT` |
+| `database_url_secret_arn`, `master_key_secret_arn`, `salt_key_secret_arn`, `redis_auth_secret_arn`, `ui_password_secret_arn` | The values of the Kubernetes Secret |
+| `kms_key_arn` | Encryption of anything the EKS stack creates, when a customer key is used |
 
-## Prerequisites
-
-- A deployed gateway foundation (`deploy/deploy.sh`), whose outputs file
-  `deploy/.generated/<deployment_name>-foundation-outputs.tfvars.json` is on
-  this machine (or set `FOUNDATION_OUTPUTS`). The ECS app may run alongside:
-  both share the database and Redis like more replicas of one gateway.
-- An EKS cluster (Kubernetes 1.30 or later, for the `preStop` sleep action) in
-  the gateway's region and VPC, with nodes in subnets that reach ghcr.io and
-  AWS APIs (for example the foundation's private subnets with the NAT
-  gateway), the EKS Pod Identity Agent, and EC2 capacity (EKS Auto Mode or a
-  managed node group) for two pods requesting 1 vCPU and 2 GiB each plus the
-  migration Job (1 vCPU, 2 GiB).
-- `kubectl` with its current context on that cluster
-  (`aws eks update-kubeconfig --name <cluster> --region <region>`) and
-  permission to create a namespace and the objects in `manifests/`.
-- Terraform >= 1.11, the AWS CLI v2, `jq` and `python3`, and AWS credentials
-  that may read the gateway's secrets and create the IAM role, the Pod
-  Identity association and an S3 bucket.
-- The gateway deployment's Terraform state bucket
-  (`litellm-gateway-tfstate-<account>-<region>`, or set `TF_STATE_BUCKET`).
-  This example's state is stored under `examples/eks/<name>.tfstate`.
-
-### Admit the cluster to the data stores
-
-The pods reach RDS and Redis with the security groups of their node (with the
-Amazon VPC CNI). EKS Auto Mode nodes and managed node groups without a custom
+The only change to the foundation is its generic client input: `extra_data_ingress_security_group_ids` (or
+`extra_data_ingress_cidrs` for a cluster in another, routed VPC) admits the cluster to RDS and Redis. With the
+Amazon VPC CNI, pods use their node's security groups; EKS Auto Mode nodes and managed node groups without a custom
 launch template use the cluster security group:
 
 ```bash
-aws eks describe-cluster --name <cluster> --query cluster.resourcesVpcConfig.clusterSecurityGroupId --output text
+aws eks describe-cluster --name <cluster> \
+  --query cluster.resourcesVpcConfig.clusterSecurityGroupId --output text
 ```
 
-Add it to the gateway's `deploy/terraform.tfvars` and run `deploy/deploy.sh`.
-The foundation plan adds two ingress rules (PostgreSQL and Redis); the app plan
-has no changes.
-
 ```hcl
+# deploy/terraform.tfvars, then deploy/deploy.sh
 extra_data_ingress_security_group_ids = ["sg-0123456789abcdef0"]
 ```
 
-Every node and pod in the cluster security group can then open connections to
-the data stores (they still need the credentials). To narrow it, give the
-gateway's nodes their own security group, or use security groups for pods, and
-admit that group instead. A cluster in another, routed VPC is admitted by CIDR
-with `extra_data_ingress_cidrs`.
+Every node and pod in that group can then open connections to the data stores (they still need the credentials).
+To narrow it, admit a security group used only by the gateway's nodes, or security groups for pods.
 
-## Deploy
+## Building blocks and recommended choices
 
-```bash
-cd examples/eks
-cp terraform/terraform.tfvars.example terraform/terraform.tfvars
-# set deployment_name (the gateway's) and cluster_name
-export AWS_REGION=<gateway region>
-scripts/deploy.sh            # shows the Terraform plan and asks for confirmation
-```
+- **Image: the `tag@digest` from `terraform/app/container.tf`.** One pinned image for both runtimes; read it from
+  the `image` line instead of copying it, so an upgrade there reaches the cluster too.
+- **Container settings: mirror the `container` block in `terraform/app/container.tf`.** Same port (4000),
+  environment and secret names, so both runtimes behave alike. Two differences are expected: the config is mounted
+  from a ConfigMap (`--config`) instead of `LITELLM_CONFIG_BUCKET_NAME` and `LITELLM_CONFIG_BUCKET_OBJECT_KEY`, and
+  `AWS_REGION` is set explicitly (ECS injects it).
+- **Config: a ConfigMap rendered from `terraform/app/templates/config-base.yaml.tftpl`.** The template takes
+  `trusted_proxy_ranges`, `request_log_bucket` and `region`, as in `terraform/app/config.tf`. Name the ConfigMap
+  after the config's hash and set `LITELLM_CONFIG_SHA` to it, so a config change rolls the pods and each ReplicaSet
+  keeps its own config. This avoids a dependency on the ECS app's config object and request-log bucket; the s3
+  callbacks need a request-log bucket of the EKS stack.
+- **Secrets: a Kubernetes Secret written from the Secrets Manager values.** Read the five values at deploy time
+  and pass them to `kubectl` on stdin, not as command arguments; server-side apply avoids a second copy in the
+  `last-applied-configuration` annotation. Restart the pods after you change a secret. Unlike on ECS, the values are
+  then readable by anyone who may read Secrets in the namespace.
+- **AWS access: EKS Pod Identity, with Bedrock inference and guardrails only.** The equivalent of the ECS task
+  role (`terraform/app/iam.tf`), plus `s3:PutObject` on the request-log bucket. Pod Identity needs no per-cluster
+  OIDC provider and no service-account annotation. It requires the EKS Pod Identity Agent (built into EKS Auto
+  Mode) and does not apply to pods on AWS Fargate.
+- **Schema migration: a Job before every rollout.** LiteLLM reports healthy on an unmigrated database, so health
+  checks cannot gate a rollout. Run the image once with `DISABLE_SCHEMA_UPDATE=false` and `--skip_server_startup`,
+  and apply the Deployment (which keeps `DISABLE_SCHEMA_UPDATE=true`) only after the Job completes.
+- **Probes: `/health/liveliness`, the ECS health-check path.** A liveness probe with ten 30-second misses (as the
+  ECS container health check), so a busy pod is not restarted with its streams in flight; a readiness probe with
+  the ALB target-group thresholds; a startup probe in place of the ECS start period.
+- **Grace period: 120 s for LiteLLM after SIGTERM (`stop_timeout`), plus a short `preStop` pause.** The pause lets
+  the endpoint removal propagate before shutdown; `terminationGracePeriodSeconds` covers both.
+- **Security context.** `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false`, all capabilities
+  dropped, and `automountServiceAccountToken: false` (LiteLLM does not call the Kubernetes API). Set
+  `runAsNonRoot` only with an image that runs as a non-root user.
 
-`deploy.sh` refuses to run unless kubectl's current context points at
-`cluster_name`. It applies the Terraform, renders the manifests, applies the
-namespace, service account, ConfigMap and Secret, runs the migration Job and
-then rolls out the Deployment and Service. Rerun it after a gateway upgrade, a
-config change or a secret rotation; unchanged inputs are a no-op apart from
-the migration Job, which runs on every deploy.
+## What ECS provides that an EKS stack must add itself
 
-Resources created (default `name` `llmgw-eks`, namespace `litellm`):
-
-| Resource | Name |
+| `terraform/app` on ECS | On EKS |
 | --- | --- |
-| IAM role and inline policy | `llmgw-eks-pod-role` |
-| EKS Pod Identity association | `litellm/litellm` on the cluster |
-| S3 bucket for request logs (metadata only, 30 days) | `llmgw-eks-req-logs-<account>-<region>` |
-| Namespace, ServiceAccount, Secret, ConfigMap, Job, Deployment, Service | in namespace `litellm` |
+| Application Load Balancer with TLS, access logs and OIDC sign-in in front of the UI paths | An ingress or load balancer of your choice, with TLS and sign-in for the UI |
+| AWS WAF in public mode | A web ACL on the load balancer you add |
+| Migration, then rollout, in one apply; the deployment circuit breaker rolls back a failed rollout | Your own migration gate; a stalled rollout is not rolled back automatically |
+| CloudWatch logs, alarms, dashboard and SNS notifications (`terraform/modules/observability`) | Log shipping, metrics and alarms of the cluster |
+| CPU and memory target-tracking scaling, 2 to 20 tasks, sized against the database connection alarm | A HorizontalPodAutoscaler, a PodDisruptionBudget and limits sized for the database |
+| Drain tuning: 120 s stop timeout matched to the target deregistration delay; `KEEPALIVE_TIMEOUT` above the 600 s ALB idle timeout | The same alignment between the grace period, the load balancer's deregistration delay and its idle timeout |
 
-## Verify
+## Example snippets
 
-```bash
-kubectl -n litellm get pods              # two litellm pods Running and Ready
-kubectl -n litellm port-forward service/litellm 4000:4000
+Illustrative and untested. Placeholders are in angle brackets.
+
+Pod Identity role and association (Terraform, AWS provider). Attach a policy with the `BedrockInference` and
+`BedrockGuardrails` statements of `terraform/app/iam.tf`:
+
+```hcl
+resource "aws_iam_role" "litellm_pod" {
+  name = "<name>-litellm-pod"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "pods.eks.amazonaws.com" }
+      Action    = ["sts:AssumeRole", "sts:TagSession"]
+      Condition = {
+        StringEquals = { "aws:SourceAccount" = "<account-id>" }
+        ArnEquals    = { "aws:SourceArn" = "arn:aws:eks:<region>:<account-id>:cluster/<cluster>" }
+      }
+    }]
+  })
+}
+
+resource "aws_eks_pod_identity_association" "litellm" {
+  cluster_name    = "<cluster>"
+  namespace       = "litellm"
+  service_account = "litellm"
+  role_arn        = aws_iam_role.litellm_pod.arn
+}
 ```
 
-In a second terminal, from the repository root:
+Deployment excerpt:
 
-```bash
-deploy/smoke-test.sh --key-secret-arn "$(jq -r .master_key_secret_arn deploy/.generated/<deployment_name>-foundation-outputs.tfvars.json)" \
-  http://127.0.0.1:4000
+```yaml
+spec:
+  replicas: 2
+  strategy:
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    spec:
+      serviceAccountName: litellm
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 130 # stop_timeout (120 s) + preStop
+      containers:
+        - name: litellm
+          image: ghcr.io/berriai/litellm:<tag>@sha256:<digest> # from terraform/app/container.tf
+          args: ["--port", "4000", "--config", "/etc/litellm/config.yaml"]
+          ports: [{ name: http, containerPort: 4000 }]
+          env:
+            - { name: DISABLE_SCHEMA_UPDATE, value: "true" }
+            - { name: LITELLM_CONFIG_SHA, value: "<config sha256>" }
+            - { name: REDIS_HOST, value: "<redis_endpoint>" }
+            - { name: REDIS_PORT, value: "<redis_port>" }
+            - { name: REDIS_SSL, value: "True" }
+            - { name: AWS_REGION, value: "<region>" }
+            # ... the other environment values of container.tf ...
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: litellm-secrets, key: DATABASE_URL } }
+            # ... LITELLM_MASTER_KEY, LITELLM_SALT_KEY, REDIS_PASSWORD, UI_PASSWORD likewise ...
+          livenessProbe:
+            httpGet: { path: /health/liveliness, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 10
+          readinessProbe:
+            httpGet: { path: /health/liveliness, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 10
+            successThreshold: 2
+            failureThreshold: 3
+          lifecycle:
+            preStop: { sleep: { seconds: 10 } } # Kubernetes 1.30 or later
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts: [{ name: config, mountPath: /etc/litellm, readOnly: true }]
+      volumes:
+        - name: config
+          configMap: { name: litellm-config-<sha16> }
 ```
 
-Add `--model <name>` for one real completion through Bedrock with the pods'
-role (a model registered in the gateway). The admin UI is at
-`http://127.0.0.1:4000/ui` (user `admin`, the UI password from the
-foundation's `ui_password_secret_arn`). Pod logs:
-`kubectl -n litellm logs deployment/litellm`.
+Migration Job excerpt (same image, environment, secrets and config as the Deployment):
 
-## Teardown
-
-```bash
-cd examples/eks
-AWS_REGION=<gateway region> scripts/teardown.sh
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: litellm-migrate
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1200
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: litellm
+      containers:
+        - name: migrate
+          image: ghcr.io/berriai/litellm:<tag>@sha256:<digest>
+          args: ["--port", "4000", "--config", "/etc/litellm/config.yaml", "--skip_server_startup"]
+          env:
+            - { name: DISABLE_SCHEMA_UPDATE, value: "false" }
+            # ... otherwise the Deployment's environment and secrets ...
 ```
 
-It asks for confirmation, deletes the namespace (and everything in it), then
-destroys the IAM role, the Pod Identity association and the request-log bucket
-with its logs. The cluster and the gateway are not touched; remove the
-cluster's security group from `extra_data_ingress_security_group_ids` and
-redeploy the gateway afterwards. If the cluster is already gone,
-`scripts/teardown.sh --skip-kubernetes` destroys the AWS resources only.
-
-## Tests
-
-Offline, no AWS access and no cluster:
+Apply the Deployment only after the Job completes (a failed Job ends this wait at the timeout):
 
 ```bash
-# The renderer, the manifests against terraform/app/container.tf, and
-# deploy.sh / teardown.sh against stub aws, terraform and kubectl commands
-python3 -m venv .venv && .venv/bin/pip install -r scripts/requirements-dev.txt
-.venv/bin/python -m pytest scripts/tests
-(cd scripts && ../.venv/bin/ruff check . && ../.venv/bin/ruff format --check .)
-shellcheck -x scripts/*.sh
-
-# Terraform: plans against a mocked AWS provider
-terraform -chdir=terraform init -backend=false
-terraform -chdir=terraform test
+kubectl -n litellm wait --for=condition=complete job/litellm-migrate --timeout=20m \
+  && kubectl -n litellm apply -f deployment.yaml
 ```
 
-With [kubeconform](https://github.com/yannh/kubeconform) on `PATH`, the tests
-also validate the rendered manifests against the Kubernetes schemas (it
-downloads the schemas on first use).
+Through `kubectl -n litellm port-forward service/litellm 4000:4000`, `deploy/smoke-test.sh` can check such a
+gateway at `http://127.0.0.1:4000`.

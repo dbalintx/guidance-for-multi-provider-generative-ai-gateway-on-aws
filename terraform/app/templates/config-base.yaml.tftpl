@@ -5,11 +5,10 @@
 environment_variables:
   STORE_MODEL_IN_DB: "True"
   # Do not set LITELLM_LOG here: it would override the log_level Terraform input.
-  # At DEBUG, LiteLLM writes every prompt and response to the logs (verified on
-  # 1.82.3 and 1.106.0).
+  # At DEBUG, LiteLLM writes every prompt and response to the logs.
 
 general_settings:
-  # The ALB is the reverse proxy LiteLLM 1.106 expects to be told about:
+  # The ALB is the reverse proxy LiteLLM needs to be told about:
   # attribute UI sign-in attempts to the client, not to the ALB.
   trusted_proxy_ranges: ${jsonencode(trusted_proxy_ranges)}
   # Spend is written to the database in batches every 60 s (LiteLLM default
@@ -24,11 +23,6 @@ litellm_settings:
   # spend and metadata are still logged.
   turn_off_message_logging: true
 
-  # Response cache in Redis. It is shared across all API keys: an identical
-  # request can return a response cached for another caller, and cached
-  # prompts and responses are stored in Redis. For multi-tenant or sensitive
-  # deployments, disable it or tune cache_params (mode, ttl) through
-  # config_override_file.
   cache: true
   cache_params:
     type: redis
@@ -47,7 +41,7 @@ litellm_settings:
     s3_region_name: ${jsonencode(region)}
 
 router_settings:
-  # simple-shuffle is LiteLLM's recommended production strategy; usage-based
+  # simple-shuffle is LiteLLM's recommended routing strategy; usage-based
   # routing adds a Redis round trip to every request. Redis stays attached so
   # RPM/TPM limits are shared across tasks.
   routing_strategy: simple-shuffle
