@@ -80,12 +80,6 @@ tags            = {}      # your own tags, merged into the defaults
 # --- app: LiteLLM config and environment ---
 # log_level              = "INFO" # DEBUG logs prompts: temporary troubleshooting only
 # config_override_file   = null   # YAML merged over the rendered config
-#   The rendered config turns on LiteLLM's Redis response cache, which is shared
-#   across all API keys (identical requests can return another caller's cached
-#   response; cached prompts/responses live in Redis). For multi-tenant or
-#   sensitive deployments, disable or tune it in the override file:
-#     litellm_settings:
-#       cache: false        # or keep it and set cache_params: { mode: default_off, ttl: 600, ... }
 # extra_environment      = {}     # non-secret env vars, e.g. { HTTPS_PROXY = "http://proxy:3128" }
 # provider_secret_arns   = {}     # e.g. { OPENAI_API_KEY = "arn:aws:secretsmanager:..." }
 
