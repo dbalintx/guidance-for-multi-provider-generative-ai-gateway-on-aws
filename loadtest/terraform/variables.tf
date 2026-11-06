@@ -61,7 +61,7 @@ variable "fake_profile" {
 }
 
 variable "fake_task_cpu" {
-  description = "CPU units per fake upstream task (1024 = 1 vCPU); it runs two server processes per vCPU. Size it so the fake upstream never limits the test (check its CPU in Container Insights)."
+  description = "CPU units per fake upstream task (1024 = 1 vCPU); it runs two server processes per vCPU. Size it so the fake upstream does not limit the test (check its CPU in Container Insights)."
   type        = number
   default     = 2048
   validation {

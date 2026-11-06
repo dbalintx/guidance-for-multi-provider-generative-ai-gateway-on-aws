@@ -3,13 +3,13 @@
 Runs on the driver (inside the VPC). For every concurrency level it repeats
 rounds; each round sends `concurrency` parallel requests for every combination
 of path (direct Bedrock Converse/ConverseStream, or the gateway's OpenAI
-chat completions) and mode (streaming or not), in a shuffled order, so drift
-in Bedrock latency hits both paths alike. Both paths draw from the same short
-prompts; every prompt carries a unique prefix, so the gateway's response cache
-never answers.
+chat completions) and mode (streaming or not), in a shuffled order, so that
+drift in Bedrock latency is spread over both paths. Both paths draw from the
+same short prompts; every prompt carries a unique prefix, so that the gateway's
+response cache is bypassed.
 
   python compare.py --gateway-url http://... --gateway-model <prefix>-bedrock \\
-      --bedrock-model amazon.nova-micro-v1:0 --samples 300 --concurrency 1,8 --out results/compare
+      --bedrock-model amazon.nova-micro-v1:0 --samples 300 --concurrency 1,4 --max-rpm 180 --out results/compare
 
 Environment: API_KEY (gateway virtual key), AWS credentials/region for Bedrock.
 Output: one JSON line per request in <out>/compare.jsonl and <out>/run.json:

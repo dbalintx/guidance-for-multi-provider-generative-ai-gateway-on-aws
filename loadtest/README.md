@@ -2,9 +2,9 @@
 
 Measures the gateway's capacity and behaviour under load without model cost: a
 fake OpenAI-compatible upstream streams synthetic tokens with a configurable
-latency, and a [locust](https://locust.io) driver loads the gateway with chat
-completions, streaming and not. Both run inside the gateway VPC (a VPN or a
-laptop link limits and distorts the results).
+latency, and a [locust](https://locust.io) (MIT License) driver loads the
+gateway with chat completions, streaming and not. Both run inside the gateway
+VPC (a VPN or a laptop link can limit and distort the results).
 
 What a run tells you:
 
@@ -16,7 +16,7 @@ What a run tells you:
   not reclaimed).
 - **Errors**: HTTP status classes, ALB 5xx/502s, streams cut short.
 
-```
+```text
 locust driver (EC2, SSM) ──> gateway ALB ──> LiteLLM tasks ──> internal NLB ──> fake upstream (ECS)
 ```
 
@@ -31,16 +31,19 @@ locust driver (EC2, SSM) ──> gateway ALB ──> LiteLLM tasks ──> inter
 
 ## Prerequisites
 
-- A deployed gateway, its admin (master) key in Secrets Manager, and a machine
-  that reaches the gateway URL for the admin API (`scripts/gateway.sh`).
+- A deployed gateway ([deployment guide](../docs/deployment.md)), its admin
+  (master) key in Secrets Manager, and a machine that reaches the gateway URL
+  for the admin API (`scripts/gateway.sh`).
 - Private subnets with outbound internet access (NAT): the fake upstream
-  installs `aiohttp` from PyPI, the driver installs locust.
+  installs [aiohttp](https://github.com/aio-libs/aiohttp) (Apache License 2.0)
+  from PyPI, the driver installs locust and
+  [boto3](https://github.com/boto/boto3) (Apache License 2.0).
 - Terraform >= 1.11, the AWS CLI, `jq`, `curl`; Python 3.11+ with
   `pip install -r requirements.txt` for the tests.
 
 The fake upstream is unauthenticated: it serves synthetic text only, and its
 security groups admit only the gateway tasks and the driver. The driver has no
-inbound rules. Results contain no prompts or keys.
+inbound rules. Results are designed to contain no prompts or keys.
 
 ## Deploy
 
@@ -55,11 +58,16 @@ EOF
 terraform init && terraform apply
 ```
 
+The load-test configuration, scenarios and results you deploy or upload are
+"Your Content" as defined in the
+[AWS Customer Agreement](https://aws.amazon.com/agreement/). AWS does not claim
+ownership of it.
+
 State is local by default; `providers.tf` shows how to keep it in the gateway's
 state bucket under a `loadtest/` key. The latency profile (`fake_profile`)
 defaults to 500 ms TTFT, 25 ms between tokens, 100-400 tokens per response and
-one token per SSE chunk (about 7 s per stream; one token per chunk is the
-gateway's worst case, as it handles every chunk).
+one token per SSE chunk (about 7 s per stream; one token per chunk is the most
+demanding case for the gateway, which processes every chunk).
 
 Register the models and the key (the key goes straight into the driver's secret):
 
@@ -94,8 +102,8 @@ scripts/driver.sh stop              # stops every running locust
 Scenario settings (`KEY=VALUE`): `STEPS` or `USERS`/`SPAWN_RATE`/`RUN_TIME`,
 `MODEL`, `STREAM_RATIO` (default 0.8), `PROMPT_CHARS` (2000), `MAX_TOKENS`,
 `WAIT_MIN`/`WAIT_MAX` (think time, 1-3 s), `PROCESSES` (locust processes,
-default one per vCPU). Every prompt starts with a UUID: the gateway's response
-cache would otherwise answer repeated prompts from Redis.
+default one per vCPU). Every prompt starts with a UUID, so that prompts are not
+repeated and the gateway's response cache (Redis) is bypassed.
 
 The user count is the number of requests in flight: each user sends one request,
 waits for the whole response (or stream), thinks, and repeats.
@@ -118,9 +126,9 @@ one line per request (`path`, `stream`, `concurrency`, `ttft_ms`, `total_ms`,
 `overhead_ms`, tokens, `error`). Compare the percentiles per path. Keep
 `MAX_RPM` below the account's on-demand requests-per-minute quota for the model
 (Service Quotas, Amazon Bedrock): throttled requests are retried by both the
-SDK and LiteLLM, and the retries, not the gateway, then dominate the tails. Prompts are
-short and `MAX_TOKENS` small: 4 x 300 x levels requests cost cents on a small
-model.
+SDK and LiteLLM, and retry waits can then dominate the tails. Prompts are short
+and `MAX_TOKENS` is small to keep the token cost low (4 x `SAMPLES` requests per
+concurrency level).
 
 ## Read the results
 
@@ -148,18 +156,18 @@ error classes. On the server side, in CloudWatch for the run window:
 
 - **Saturation point**: the step at which TTFT p95 or the error share climbs
   while the request rate stops growing. Compare the task CPU at that step with
-  the CPU target-tracking value: if the service never reaches the target
+  the CPU target-tracking value: if the service does not reach the target
   before latency climbs, CPU scaling does not protect latency. LiteLLM runs one
-  worker process per task: it saturates at one vCPU, so the CPU of a 2-vCPU
-  task plateaus near 50 %.
+  worker process per task: a single worker process can use at most one vCPU,
+  so the CPU average of a 2-vCPU task cannot exceed about 50 %.
 - **Memory**: per-task memory over a long steady run. Growth that continues at
   constant load, and is not returned after the load stops, is a leak.
 - **Errors**: the `error` field (HTTP status and body, or the exception for
   streams cut short) and the ALB counts (ELB 502s without matching target 5xx
   point at connection reuse between the ALB and the tasks).
 - `overhead_ms` is time spent in the gateway outside the upstream call.
-- Runs differ by 10-20 % with identical settings; repeat a step before reading a
-  smaller difference into it.
+- Runs can differ noticeably with identical settings; repeat a step before
+  reading a small difference into it.
 
 Load against a shared gateway also writes the request logs (S3) and spend
 records (database) of every request; the auto scaling policies act on it as on

@@ -13,7 +13,7 @@
 # them, and stores the key in the driver's secret (output api_key_secret_id).
 # teardown: deletes every model and key whose name/alias starts with <prefix>-.
 # PREFIX defaults to the terraform name_prefix. The master key is read from
-# Secrets Manager into a mode-0600 curl header file, never argv or output.
+# Secrets Manager into a mode-0600 curl header file, not argv or output.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

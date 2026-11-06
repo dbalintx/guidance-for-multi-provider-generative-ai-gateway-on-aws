@@ -26,7 +26,7 @@ until [ -f /opt/loadtest/ready ]; do echo "waiting for bootstrap"; sleep 10; don
 aws s3 cp --quiet "s3://${ARTIFACTS_BUCKET}/scenario/locustfile.py" locustfile.py
 aws s3 cp --quiet "s3://${ARTIFACTS_BUCKET}/scenario/compare.py" compare.py
 
-# The key reaches locust through its environment only (never argv or logs).
+# The key is passed to locust through its environment only (not argv or logs).
 API_KEY="$(aws secretsmanager get-secret-value --secret-id "$API_KEY_SECRET_ID" --query SecretString --output text)"
 export API_KEY
 export REQUEST_LOG_DIR="${DIR}/results"
