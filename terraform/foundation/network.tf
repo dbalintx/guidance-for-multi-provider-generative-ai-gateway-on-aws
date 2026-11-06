@@ -64,9 +64,10 @@ resource "aws_subnet" "private" {
   tags = { Name = "${var.deployment_name}-private-${count.index}" }
 }
 
-# One NAT gateway, in the first public subnet. The private subnets need egress
-# for the online licence check, the IdP and non-Bedrock providers; Bedrock and
-# the other AWS services go through the VPC endpoints.
+# One NAT gateway, in the first public subnet, for outbound traffic from the
+# private subnets: the image pull from ghcr.io, the online licence check, the
+# IdP, non-Bedrock providers, and AWS service calls unless the optional
+# interface endpoints are created. S3 traffic uses the gateway endpoint.
 resource "aws_eip" "nat" {
   count  = local.creating_new_vpc && local.internet_enabled ? 1 : 0
   domain = "vpc"

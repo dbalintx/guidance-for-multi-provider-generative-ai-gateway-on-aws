@@ -237,7 +237,7 @@ variable "deletion_protection" {
 }
 
 variable "log_level" {
-  description = "LITELLM_LOG level. DEBUG writes prompts and provider payloads to the logs (verified on 1.82.3 and 1.106.0): temporary troubleshooting only — the plan warns while it is on."
+  description = "LITELLM_LOG level. DEBUG writes prompts and provider payloads to the logs: temporary troubleshooting only; the plan warns while it is on."
   type        = string
   default     = "INFO"
 
@@ -248,7 +248,7 @@ variable "log_level" {
 }
 
 variable "config_override_file" {
-  description = "Optional YAML file merged over the rendered LiteLLM config: model_list entries are appended; general_settings, litellm_settings and router_settings keys override the base."
+  description = "Optional YAML file merged over the rendered LiteLLM config: general_settings, litellm_settings and router_settings are merged key by key (the override wins); model_list and every other top-level key are taken from the override."
   type        = string
   default     = null
 }

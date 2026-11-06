@@ -50,14 +50,14 @@ resource "terraform_data" "litellm_config" {
 check "debug_logging_is_temporary" {
   assert {
     condition     = var.log_level != "DEBUG"
-    error_message = "log_level = DEBUG writes every prompt and response to CloudWatch (verified on 1.82.3 and 1.106.0). Use it for temporary troubleshooting only, then set it back to INFO."
+    error_message = "log_level = DEBUG writes every prompt and response to CloudWatch. Use it for temporary troubleshooting only, then set it back to INFO."
   }
 }
 
 check "enterprise_settings_need_licence" {
   assert {
     condition     = var.litellm_license_secret_arn != null || !can(local.litellm_config.general_settings.enable_jwt_auth)
-    error_message = "enable_jwt_auth is an Enterprise feature: without litellm_license_secret_arn LiteLLM answers 403 to JWTs (verified on 1.106.0)."
+    error_message = "enable_jwt_auth is an Enterprise feature: without litellm_license_secret_arn LiteLLM answers 403 to JWTs."
   }
 }
 
