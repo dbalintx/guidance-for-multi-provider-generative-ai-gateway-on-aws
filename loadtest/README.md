@@ -27,8 +27,6 @@ locust driver (EC2, SSM) ──> gateway ALB ──> LiteLLM tasks ──> inter
 | `terraform/` | Fake upstream (Fargate + internal NLB), driver (EC2, no inbound), artifacts bucket, key secret |
 | `scripts/gateway.sh` | Registers the fake models and a virtual key on the gateway; removes them |
 | `scripts/driver.sh` | Starts, checks, fetches and stops runs on the driver through SSM |
-| `analysis/summarize.py` | Client-side tables per step or per minute |
-| `analysis/collect_metrics.py` | Server-side tables: per-task CPU/memory, service averages, ALB 5xx, scaling activities |
 
 ## Prerequisites
 
@@ -37,7 +35,7 @@ locust driver (EC2, SSM) ──> gateway ALB ──> LiteLLM tasks ──> inter
 - Private subnets with outbound internet access (NAT): the fake upstream
   installs `aiohttp` from PyPI, the driver installs locust.
 - Terraform >= 1.11, the AWS CLI, `jq`, `curl`; Python 3.11+ with
-  `pip install -r requirements.txt` for the analysis scripts and tests.
+  `pip install -r requirements.txt` for the tests.
 
 The fake upstream is unauthenticated: it serves synthetic text only, and its
 security groups admit only the gateway tasks and the driver. The driver has no
@@ -103,33 +101,40 @@ waits for the whole response (or stream), thinks, and repeats.
 
 ## Read the results
 
-```bash
-python analysis/summarize.py results/steps            # one row per step
-python analysis/summarize.py results/soak --minutes   # one row per minute
-python analysis/collect_metrics.py --cluster <deployment>-cluster --service <deployment>-litellm \
-  --alb-arn-suffix "$(terraform -chdir=../terraform/app output -raw alb_arn_suffix)" \
-  --target-group-arn-suffix "$(terraform -chdir=../terraform/app output -raw target_group_arn_suffix)" \
-  --start <run start, ISO UTC> --end <run end> --out results/steps/server
-```
+`driver.sh fetch` copies a run to `results/<run>/`:
 
-(`run.json` holds the start time; the summary prints each step's start.)
+| File | Content |
+|---|---|
+| `run.json` | Start time (epoch) and scenario settings |
+| `requests-*.jsonl` | One line per request: start time `t`, `kind` (stream/chat), `status`, `ttft_ms`, `total_ms`, `chunks`, `tokens`, `overhead_ms` (LiteLLM's `x-litellm-overhead-duration-ms`), `error` |
+| `locust_stats.csv`, `locust_stats_history.csv`, `report.html` | Locust's own aggregates; "chat stream" is the whole stream |
+| `locust.log` | Locust output, including CPU warnings for the driver |
+
+Group the JSONL lines by step (start time + step durations from `run.json`) or
+by minute for percentiles of TTFT and total time, the request rate and the
+error classes. On the server side, in CloudWatch for the run window:
+
+| Question | Where |
+|---|---|
+| Task CPU and memory, per task | Container Insights performance log group `/aws/ecs/containerinsights/<deployment>-cluster/performance`, `Type = "Task"` events (`CpuUtilized / CpuReserved`, `MemoryUtilized`), in Logs Insights by `bin(1m), TaskId` |
+| What auto scaling sees | `AWS/ECS` `CPUUtilization` / `MemoryUtilization` (service average), `ECS/ContainerInsights` `RunningTaskCount` / `DesiredTaskCount` |
+| Scale-out and scale-in | Application Auto Scaling scaling activities of `service/<deployment>-cluster/<deployment>-litellm`, and the service's events |
+| Errors at the load balancer | `AWS/ApplicationELB` `HTTPCode_ELB_5XX_Count` (`_502`, `_503`, `_504`) vs `HTTPCode_Target_5XX_Count`, `TargetResponseTime`, `HealthyHostCount` |
+| Why LiteLLM failed requests | The LiteLLM log group: `ERROR` / `WARNING` messages in the run window |
+| Fake upstream headroom | Container Insights of `<prefix>-cluster`: its CPU must stay well below its limit |
 
 - **Saturation point**: the step at which TTFT p95 or the error share climbs
-  while req/s stops growing. Compare the task CPU % (`tasks.csv`) at that step
-  with the CPU target-tracking value: if the service never reaches the target
+  while the request rate stops growing. Compare the task CPU at that step with
+  the CPU target-tracking value: if the service never reaches the target
   before latency climbs, CPU scaling does not protect latency. LiteLLM runs one
-  worker process per task here: it saturates at one vCPU, so the CPU average
-  of a 2-vCPU task plateaus near 50 %.
-- **Memory**: `memory.csv` (per-task slope) and `tasks.csv` over the soak. Growth that continues
-  at constant load, and is not returned after the load stops, is a leak.
-- **Errors**: `error classes` (HTTP status, or the exception for streams cut
-  short) and the ALB counts in `service.csv` (`elb_502` without matching
-  `target_5xx` points at connection reuse between the ALB and the tasks).
-- `overhead p50/p95 ms` is LiteLLM's own `x-litellm-overhead-duration-ms`:
-  time spent in the gateway outside the upstream call.
-- Check the fake upstream's CPU in Container Insights (`<prefix>-cluster`): it
-  must stay well below its limit. Locust warns in `locust.log` when the driver's
-  CPU is the limit.
+  worker process per task: it saturates at one vCPU, so the CPU of a 2-vCPU
+  task plateaus near 50 %.
+- **Memory**: per-task memory over a long steady run. Growth that continues at
+  constant load, and is not returned after the load stops, is a leak.
+- **Errors**: the `error` field (HTTP status and body, or the exception for
+  streams cut short) and the ALB counts (ELB 502s without matching target 5xx
+  point at connection reuse between the ALB and the tasks).
+- `overhead_ms` is time spent in the gateway outside the upstream call.
 - Runs differ by 10-20 % with identical settings; repeat a step before reading a
   smaller difference into it.
 
@@ -148,6 +153,6 @@ terraform -chdir=terraform destroy
 
 ```bash
 pip install -r requirements.txt
-ruff check . && pytest                 # fake upstream, stream parsing, summaries
+ruff check . && pytest                 # fake upstream, stream parsing
 terraform -chdir=terraform test        # mocked provider, no AWS access
 ```

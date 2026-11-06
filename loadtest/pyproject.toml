@@ -8,10 +8,10 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 ignore = ["SIM115"] # the request log stays open for the whole run
 
 [tool.ruff.lint.isort]
-known-first-party = ["server", "locustfile", "summarize"]
+known-first-party = ["server", "locustfile"]
 
 [tool.pytest.ini_options]
-pythonpath = ["fake_upstream", "locust", "analysis"]
+pythonpath = ["fake_upstream", "locust"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
