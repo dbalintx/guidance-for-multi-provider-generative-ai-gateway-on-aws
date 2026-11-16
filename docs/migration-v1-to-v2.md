@@ -42,12 +42,6 @@ Carries version 1's LiteLLM database (models with their stored provider credenti
 budgets and spend) into version 2. LiteLLM encrypts the stored provider credentials with its salt key, so version
 2 must use version 1's salt key. Reusing the master key as well keeps existing administrative automation working.
 
-What was tested: a local copy only, with LiteLLM 1.82.3 creating the data on PostgreSQL 17, then LiteLLM 1.106.6's
-migration and server. The migration completed, and existing virtual keys, teams, users, models with stored
-provider credentials, and spend kept working with version 1's salt key; with a different salt key, models with
-stored credentials became unusable. It was not tested against a real version 1 deployment, so rehearse on a copy
-of your data first.
-
 1. **Copy the keys into two plain-string secrets.** Version 1 stores both keys in one JSON secret (name prefix
    `LiteLLMMasterSalt-`); version 2 expects one plain `sk-...` value per secret. The values go from one secret to
    the other without appearing on screen:
