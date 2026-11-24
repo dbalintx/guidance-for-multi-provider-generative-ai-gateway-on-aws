@@ -7,12 +7,31 @@ resource "aws_security_group" "ecs_service" {
   description = "LiteLLM Fargate tasks"
   vpc_id      = var.vpc_id
 
+  # HTTPS only: LLM providers, AWS APIs (directly or through VPC endpoints),
+  # the identity provider for LiteLLM SSO and the licence server. RDS and Redis
+  # are reached through the foundation's data-ingress group (ecs.tf), and DNS
+  # through the VPC resolver, which security groups do not filter. Inline rules,
+  # so Terraform owns the full egress set and removes anything else.
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "Outbound to LLM providers, AWS APIs and the licence server"
+    description = "HTTPS to LLM providers, AWS APIs, the IdP and the licence server"
+  }
+
+  # Model endpoints on other ports, for example a self-hosted model server or
+  # the load-test fake upstream (loadtest/README.md).
+  dynamic "egress" {
+    for_each = var.extra_task_egress_rules
+    content {
+      from_port       = egress.value.port
+      to_port         = egress.value.port
+      protocol        = "tcp"
+      cidr_blocks     = egress.value.cidr_ipv4 == null ? null : [egress.value.cidr_ipv4]
+      security_groups = egress.value.security_group_id == null ? null : [egress.value.security_group_id]
+      description     = egress.value.description
+    }
   }
 }
 

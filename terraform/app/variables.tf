@@ -235,6 +235,32 @@ variable "client_security_group_ids" {
   default     = []
 }
 
+variable "extra_task_egress_rules" {
+  description = "Extra outbound TCP rules for the LiteLLM tasks, which otherwise reach only tcp/443 (plus the data stores). Use for model endpoints on other ports, such as a self-hosted model server or the load-test fake upstream. Each rule names one port and exactly one target: a CIDR range or a security group."
+  type = list(object({
+    description       = string
+    port              = number
+    cidr_ipv4         = optional(string)
+    security_group_id = optional(string)
+  }))
+  default = []
+
+  validation {
+    condition     = alltrue([for r in var.extra_task_egress_rules : r.port >= 1 && r.port <= 65535 && floor(r.port) == r.port])
+    error_message = "Each extra_task_egress_rules port must be a whole number between 1 and 65535."
+  }
+
+  validation {
+    condition     = alltrue([for r in var.extra_task_egress_rules : (r.cidr_ipv4 == null) != (r.security_group_id == null)])
+    error_message = "Each extra_task_egress_rules entry needs exactly one of cidr_ipv4 or security_group_id."
+  }
+
+  validation {
+    condition     = alltrue([for r in var.extra_task_egress_rules : r.cidr_ipv4 == null || (can(cidrnetmask(r.cidr_ipv4)) && tonumber(split("/", coalesce(r.cidr_ipv4, "0.0.0.0/32"))[1]) >= 8)])
+    error_message = "extra_task_egress_rules cidr_ipv4 must be a valid IPv4 CIDR no wider than /8; open the internet only on tcp/443, which is already allowed."
+  }
+}
+
 variable "deletion_protection" {
   description = "Protects the ALB from deletion and keeps the log buckets and the LiteLLM and WAF log groups on destroy; deploy/undeploy.sh stops before any destroy while it is true. Set to false and apply before undeploying."
   type        = bool

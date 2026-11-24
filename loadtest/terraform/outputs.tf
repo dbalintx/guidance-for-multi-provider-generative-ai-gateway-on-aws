@@ -37,3 +37,8 @@ output "name_prefix" {
   description = "Prefix of every resource, model and key of this load test."
   value       = var.name_prefix
 }
+
+output "fake_upstream_security_group_id" {
+  description = "Security group of the fake upstream's load balancer. The gateway tasks reach only tcp/443 by default: add it to the gateway's extra_task_egress_rules on port 80 and redeploy the gateway."
+  value       = aws_security_group.nlb.id
+}

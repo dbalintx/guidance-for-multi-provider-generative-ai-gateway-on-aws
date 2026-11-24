@@ -180,3 +180,39 @@ run "gateway_hostname_must_be_a_dns_name" {
 
   expect_failures = [var.gateway_hostname]
 }
+
+run "extra_task_egress_needs_exactly_one_target" {
+  command = plan
+
+  variables {
+    extra_task_egress_rules = [
+      { description = "Both targets", port = 8000, cidr_ipv4 = "10.20.0.0/16", security_group_id = "sg-0aaaaaaaaaaaaaaaa" },
+    ]
+  }
+
+  expect_failures = [var.extra_task_egress_rules]
+}
+
+run "extra_task_egress_rejects_wide_ranges" {
+  command = plan
+
+  variables {
+    extra_task_egress_rules = [
+      { description = "Internet on port 80", port = 80, cidr_ipv4 = "0.0.0.0/0" },
+    ]
+  }
+
+  expect_failures = [var.extra_task_egress_rules]
+}
+
+run "extra_task_egress_rejects_invalid_port" {
+  command = plan
+
+  variables {
+    extra_task_egress_rules = [
+      { description = "Out of range", port = 70000, security_group_id = "sg-0aaaaaaaaaaaaaaaa" },
+    ]
+  }
+
+  expect_failures = [var.extra_task_egress_rules]
+}

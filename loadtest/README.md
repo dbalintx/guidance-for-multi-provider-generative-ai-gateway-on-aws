@@ -48,6 +48,19 @@ A private gateway admits its VPC CIDR by default. If the gateway sets
 group (the `driver_security_group_id` output) to the gateway's
 `client_security_group_ids` and redeploy the gateway.
 
+The gateway tasks reach only tcp/443 by default, and the fake upstream listens
+on port 80. After deploying the load test, add its load balancer's security
+group (the `fake_upstream_security_group_id` output) to the gateway's
+`deploy/terraform.tfvars` and redeploy the gateway:
+
+```hcl
+extra_task_egress_rules = [
+  { description = "Load-test fake upstream", port = 80, security_group_id = "sg-..." },
+]
+```
+
+Remove the entry and redeploy the gateway after the [teardown](#teardown).
+
 The load-test infrastructure (the driver instance, the fake upstream's Fargate
 tasks, its load balancer and Container Insights) runs and is billed around the
 clock until you destroy it, and the load also scales the gateway out. Shutting

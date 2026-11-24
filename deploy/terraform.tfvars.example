@@ -63,6 +63,7 @@ tags            = {}      # your own tags, merged into the defaults
 # --- app: who may reach the ALB in private mode ---
 # client_cidrs              = [] # empty = the VPC CIDR only; listed ranges replace it
 # client_security_group_ids = [] # extra source security groups (the demo VPN is added automatically)
+# extra_task_egress_rules = [] # tasks reach only tcp/443; e.g. [{ description = "Self-hosted model", port = 8000, cidr_ipv4 = "10.20.0.0/16" }]
 
 # --- app: identity provider (ALB sign-in in front of the UI, both modes; needs HTTPS) ---
 # identity_provider_session_timeout_seconds = 43200 # load balancer sign-in session (default 12 hours)

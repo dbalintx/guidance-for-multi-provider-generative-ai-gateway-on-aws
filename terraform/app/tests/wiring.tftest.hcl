@@ -1456,3 +1456,46 @@ run "waf_logs_redact_the_query_string" {
     error_message = "WAF logs must redact the query string."
   }
 }
+
+run "task_egress_is_https_only_by_default" {
+  command = apply
+
+  assert {
+    condition     = length(aws_security_group.ecs_service.egress) == 1
+    error_message = "By default the tasks must have exactly one egress rule."
+  }
+
+  assert {
+    condition = alltrue([for e in aws_security_group.ecs_service.egress :
+    e.protocol == "tcp" && e.from_port == 443 && e.to_port == 443 && toset(e.cidr_blocks) == toset(["0.0.0.0/0"])])
+    error_message = "Task egress must be tcp/443 only, not all protocols."
+  }
+}
+
+run "extra_task_egress_rules_added" {
+  command = apply
+
+  variables {
+    extra_task_egress_rules = [
+      { description = "Self-hosted model", port = 8000, cidr_ipv4 = "10.20.0.0/16" },
+      { description = "Load-test fake upstream", port = 80, security_group_id = "sg-0aaaaaaaaaaaaaaaa" },
+    ]
+  }
+
+  assert {
+    condition     = length(aws_security_group.ecs_service.egress) == 3
+    error_message = "Each extra egress rule must be added next to the tcp/443 rule."
+  }
+
+  assert {
+    condition = length([for e in aws_security_group.ecs_service.egress : e if
+    e.from_port == 8000 && e.to_port == 8000 && e.protocol == "tcp" && toset(e.cidr_blocks) == toset(["10.20.0.0/16"])]) == 1
+    error_message = "A CIDR egress rule must open only its own port to its own range."
+  }
+
+  assert {
+    condition = length([for e in aws_security_group.ecs_service.egress : e if
+    e.from_port == 80 && e.protocol == "tcp" && contains(tolist(e.security_groups), "sg-0aaaaaaaaaaaaaaaa")]) == 1
+    error_message = "A security-group egress rule must reference that group on its own port."
+  }
+}
