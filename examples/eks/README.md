@@ -36,7 +36,7 @@ ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 terraform -chdir=terraform/foundation init -reconfigure \
   -backend-config="bucket=litellm-gateway-tfstate-${ACCOUNT_ID}-${AWS_REGION}" \
   -backend-config="key=<deployment_name>/foundation.tfstate" \
-  -backend-config="region=${AWS_REGION}" -backend-config="encrypt=true" -backend-config="use_lockfile=true"
+  -backend-config="region=${AWS_REGION}" -backend-config="use_lockfile=true"
 terraform -chdir=terraform/foundation apply -var-file=../../deploy/terraform.tfvars
 
 mkdir -p deploy/.generated

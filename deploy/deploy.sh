@@ -10,8 +10,7 @@
 # the review. Foundation outputs are wired into app via `terraform output
 # -json` — app never reads foundation state directly.
 #
-# State lives in a versioned, encrypted, private S3 bucket with native S3
-# locking, under <deployment_name>/foundation.tfstate and
+# State lives in a versioned, SSE-KMS encrypted, access-logged, private S3 bucket with native S3 locking, under <deployment_name>/foundation.tfstate and
 # <deployment_name>/app.tfstate. The bucket is created on first run (the
 # fresh-account bootstrap step, see docs/deployment.md) and must be
 # owned by the deploying account; override its name with TF_STATE_BUCKET, the
@@ -110,6 +109,14 @@ REGION="${AWS_REGION:-$(aws configure get region || true)}"
 [ -n "$REGION" ] || { echo "No region: set AWS_REGION or configure a default region" >&2; exit 1; }
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 TF_STATE_BUCKET="${TF_STATE_BUCKET:-litellm-gateway-tfstate-${ACCOUNT_ID}-${REGION}}"
+# KMS key for a new state bucket's default encryption: TF_STATE_KMS_KEY_ARN, else
+# the deployment's kms_key_arn, else the AWS managed aws/s3 key. State holds the
+# ALB OIDC client secret, so a customer managed key is what limits who can read it.
+TF_STATE_KMS_KEY_ARN="${TF_STATE_KMS_KEY_ARN:-$(read_tfvar kms_key_arn string 'null')}"
+if [ -n "$TF_STATE_KMS_KEY_ARN" ] && ! [[ "$TF_STATE_KMS_KEY_ARN" =~ ^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$ ]]; then
+  echo "TF_STATE_KMS_KEY_ARN / kms_key_arn must be a KMS key ARN (arn:aws:kms:<region>:<account>:key/<id>)" >&2
+  exit 1
+fi
 
 # Succeeds only when the bucket exists AND belongs to this account; a bucket of
 # the same name owned by another account is rejected, never written to.
@@ -147,6 +154,65 @@ check_state_bucket() {
     echo "Configure them on the bucket, or set TF_STATE_BUCKET to a bucket that has them. This script does not change an existing bucket." >&2
     exit 1
   fi
+  out="$(aws s3api get-bucket-encryption --bucket "$TF_STATE_BUCKET" \
+    --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm' --output text 2>/dev/null || true)"
+  if [ "$out" != "aws:kms" ] && [ "$out" != "aws:kms:dsse" ]; then
+    echo "Note: state bucket ${TF_STATE_BUCKET} encrypts with ${out:-an unknown algorithm}, not SSE-KMS. State holds the ALB OIDC client secret; consider default SSE-KMS with a customer managed key (docs/deployment.md, Terraform state)." >&2
+  fi
+  out="$(aws s3api get-bucket-logging --bucket "$TF_STATE_BUCKET" --query 'LoggingEnabled.TargetBucket' --output text 2>/dev/null || true)"
+  if [ -z "$out" ] || [ "$out" = "None" ]; then
+    echo "Note: state bucket ${TF_STATE_BUCKET} has no S3 server access logging; consider enabling it (docs/deployment.md, Terraform state)." >&2
+  fi
+}
+
+# S3 server access logs of a newly created state bucket go to its own log bucket
+# (<state bucket>-access-logs): SSE-S3, which is all S3 logging can deliver to,
+# private, TLS-only, delivery limited to S3 logging for the state bucket and
+# this account, expired after ten years. Like the state bucket, it is kept by
+# undeploy.sh.
+TF_STATE_LOG_BUCKET="${TF_STATE_BUCKET}-access-logs"
+create_state_access_log_bucket() {
+  if [ "${#TF_STATE_LOG_BUCKET}" -gt 63 ]; then
+    echo "Note: ${TF_STATE_LOG_BUCKET} exceeds 63 characters; S3 access logging for the state bucket is not configured. Use a shorter TF_STATE_BUCKET to get it." >&2
+    return 0
+  fi
+  echo "Creating access-log bucket ${TF_STATE_LOG_BUCKET} for the state bucket"
+  if [ "$REGION" = "us-east-1" ]; then
+    aws s3api create-bucket --bucket "$TF_STATE_LOG_BUCKET" --region "$REGION" >/dev/null
+  else
+    aws s3api create-bucket --bucket "$TF_STATE_LOG_BUCKET" --region "$REGION" \
+      --create-bucket-configuration LocationConstraint="$REGION" >/dev/null
+  fi
+  aws s3api put-bucket-encryption --bucket "$TF_STATE_LOG_BUCKET" \
+    --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+  aws s3api put-public-access-block --bucket "$TF_STATE_LOG_BUCKET" \
+    --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+  aws s3api put-bucket-ownership-controls --bucket "$TF_STATE_LOG_BUCKET" \
+    --ownership-controls 'Rules=[{ObjectOwnership=BucketOwnerEnforced}]'
+  aws s3api put-bucket-policy --bucket "$TF_STATE_LOG_BUCKET" --policy "$(jq -cn \
+    --arg l "$TF_STATE_LOG_BUCKET" --arg s "$TF_STATE_BUCKET" --arg a "$ACCOUNT_ID" '{
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Sid: "DenyInsecureTransport", Effect: "Deny", Principal: "*", Action: "s3:*",
+        Resource: ["arn:aws:s3:::\($l)", "arn:aws:s3:::\($l)/*"],
+        Condition: { Bool: { "aws:SecureTransport": "false" } }
+      },
+      {
+        Sid: "AllowS3ServerAccessLogDelivery", Effect: "Allow",
+        Principal: { Service: "logging.s3.amazonaws.com" }, Action: "s3:PutObject",
+        Resource: "arn:aws:s3:::\($l)/state/*",
+        Condition: {
+          ArnLike: { "aws:SourceArn": "arn:aws:s3:::\($s)" },
+          StringEquals: { "aws:SourceAccount": $a }
+        }
+      }
+    ]
+  }')"
+  aws s3api put-bucket-lifecycle-configuration --bucket "$TF_STATE_LOG_BUCKET" \
+    --lifecycle-configuration '{"Rules":[{"ID":"expire-access-logs","Status":"Enabled","Filter":{},"Expiration":{"Days":3653},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":7}}]}'
+  aws s3api put-bucket-logging --bucket "$TF_STATE_BUCKET" --bucket-logging-status "$(jq -cn --arg l "$TF_STATE_LOG_BUCKET" \
+    '{LoggingEnabled: {TargetBucket: $l, TargetPrefix: "state/"}}')"
 }
 
 # State bucket: versioned, encrypted, private, owner-enforced, TLS-only, with
@@ -170,7 +236,10 @@ case "$(state_bucket_status)" in
   aws s3api put-bucket-versioning --bucket "$TF_STATE_BUCKET" \
     --versioning-configuration Status=Enabled
   aws s3api put-bucket-encryption --bucket "$TF_STATE_BUCKET" \
-    --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+    --server-side-encryption-configuration "$(jq -cn --arg k "$TF_STATE_KMS_KEY_ARN" '{Rules: [{
+      ApplyServerSideEncryptionByDefault: ({SSEAlgorithm: "aws:kms"} + (if $k == "" then {} else {KMSMasterKeyID: $k} end)),
+      BucketKeyEnabled: true
+    }]}')"
   aws s3api put-public-access-block --bucket "$TF_STATE_BUCKET" \
     --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
   aws s3api put-bucket-ownership-controls --bucket "$TF_STATE_BUCKET" \
@@ -183,15 +252,18 @@ case "$(state_bucket_status)" in
       Condition: { Bool: { "aws:SecureTransport": "false" } }
     }]
   }')"
+  create_state_access_log_bucket
   ;;
 esac
 
 init() { # dir state-key
+  # No encrypt=true: the backend would then send an explicit AES256 header that
+  # overrides the bucket's default SSE-KMS. The bucket's default encryption,
+  # which check_state_bucket requires, encrypts every state object.
   terraform -chdir="$1" init -input=false -reconfigure \
     -backend-config="bucket=${TF_STATE_BUCKET}" \
     -backend-config="key=$2" \
     -backend-config="region=${REGION}" \
-    -backend-config="encrypt=true" \
     -backend-config="use_lockfile=true" >/dev/null
 }
 

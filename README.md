@@ -1,8 +1,5 @@
 # Guidance for Multi-Provider Generative AI Gateway on AWS
 
-> [!WARNING]
-> **This is a beta release and security review is still in progress.**
-
 This Guidance runs the open-source [LiteLLM](https://docs.litellm.ai/) proxy (MIT License; its `enterprise/`
 directory is under a separate licence) as a private gateway, designed for high availability, in your AWS account,
 deployed with Terraform. Applications call one OpenAI-compatible endpoint; LiteLLM routes the calls to Amazon
@@ -131,7 +128,7 @@ A default deployment runs these resources around the clock:
 | Amazon ElastiCache (Redis OSS) | 2 `cache.t3.micro` nodes |
 | AWS Secrets Manager | 5 generated secrets, plus each secret you add (identity provider, licence, provider API keys) |
 | Amazon CloudWatch | Log groups with ten-year retention, alarms, 1 dashboard, Container Insights |
-| Amazon S3 | Config, request-log and access-log buckets |
+| Amazon S3 | Config, request-log and access-log buckets, and server access-log buckets for the config and state buckets |
 | AWS KMS | 1 key for the alarm topic (replaced by your key when `kms_key_arn` is set) |
 | AWS Certificate Manager | Your certificate (public certificates have no charge) |
 

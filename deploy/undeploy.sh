@@ -152,7 +152,6 @@ init() { # dir state-key
     -backend-config="bucket=${TF_STATE_BUCKET}" \
     -backend-config="key=$2" \
     -backend-config="region=${REGION}" \
-    -backend-config="encrypt=true" \
     -backend-config="use_lockfile=true" >/dev/null
 }
 

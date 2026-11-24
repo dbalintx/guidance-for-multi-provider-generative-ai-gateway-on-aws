@@ -30,6 +30,12 @@ override_resource {
 }
 
 override_resource {
+  target          = aws_s3_bucket.s3_access_logs
+  override_during = plan
+  values          = { arn = "arn:aws:s3:::llmgw-s3-access-logs-mock", bucket = "llmgw-s3-access-logs-mock", id = "llmgw-s3-access-logs-mock" }
+}
+
+override_resource {
   target          = aws_secretsmanager_secret.master_key[0]
   override_during = plan
   values          = { arn = "arn:aws:secretsmanager:eu-west-1:123456789012:secret:llmgw-master-key-abc" }
@@ -165,6 +171,36 @@ run "config_bucket_is_versioned_and_private" {
     condition     = strcontains(aws_s3_bucket_policy.config.policy, "aws:SecureTransport")
     error_message = "The bucket policy must deny non-TLS access."
   }
+
+  assert {
+    condition     = aws_s3_bucket_logging.config.target_bucket == aws_s3_bucket.s3_access_logs.id && aws_s3_bucket_logging.config.target_prefix == "config/"
+    error_message = "The config bucket must write S3 server access logs to the dedicated access-log bucket."
+  }
+
+  assert {
+    condition     = one([for r in aws_s3_bucket_server_side_encryption_configuration.s3_access_logs.rule : r.apply_server_side_encryption_by_default[0].sse_algorithm]) == "AES256"
+    error_message = "The access-log target bucket must use SSE-S3, the only encryption S3 server access logging supports."
+  }
+
+  assert {
+    condition = alltrue([
+      aws_s3_bucket_public_access_block.s3_access_logs.block_public_acls,
+      aws_s3_bucket_public_access_block.s3_access_logs.block_public_policy,
+      aws_s3_bucket_public_access_block.s3_access_logs.ignore_public_acls,
+      aws_s3_bucket_public_access_block.s3_access_logs.restrict_public_buckets,
+    ]) && aws_s3_bucket.s3_access_logs.force_destroy == false
+    error_message = "The access-log bucket must block public access and be kept while deletion protection is on."
+  }
+
+  assert {
+    condition = (
+      strcontains(aws_s3_bucket_policy.s3_access_logs.policy, "aws:SecureTransport") &&
+      strcontains(aws_s3_bucket_policy.s3_access_logs.policy, "logging.s3.amazonaws.com") &&
+      strcontains(aws_s3_bucket_policy.s3_access_logs.policy, "aws:SourceAccount") &&
+      strcontains(aws_s3_bucket_policy.s3_access_logs.policy, "arn:aws:s3:::llmgw-config-mock")
+    )
+    error_message = "Log delivery must be TLS-only and limited to S3 logging for this config bucket and account."
+  }
 }
 
 run "secrets_have_recovery_windows_and_stay_out_of_outputs" {
@@ -283,6 +319,11 @@ run "protection_off_allows_teardown" {
   assert {
     condition     = aws_s3_bucket.config.force_destroy
     error_message = "deletion_protection = false must let the config bucket be destroyed."
+  }
+
+  assert {
+    condition     = aws_s3_bucket.s3_access_logs.force_destroy
+    error_message = "deletion_protection = false must let the access-log bucket be destroyed."
   }
 }
 

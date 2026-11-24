@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.11" # write-only arguments; cross-variable validation; S3 native state locking
 
-  # Configured by deploy/deploy.sh (bucket, key, region, encrypt, use_lockfile).
+  # Configured by deploy/deploy.sh (bucket, key, region, use_lockfile; objects take the bucket's default SSE-KMS).
   backend "s3" {}
 
   required_providers {

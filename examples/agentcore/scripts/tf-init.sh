@@ -42,6 +42,5 @@ terraform -chdir="$TF_DIR" init -input=false -reconfigure \
   -backend-config="bucket=${TF_STATE_BUCKET}" \
   -backend-config="key=examples/agentcore/${AGENT_NAME}.tfstate" \
   -backend-config="region=${REGION}" \
-  -backend-config="encrypt=true" \
   -backend-config="use_lockfile=true" >/dev/null
 echo "Terraform state: s3://${TF_STATE_BUCKET}/examples/agentcore/${AGENT_NAME}.tfstate"

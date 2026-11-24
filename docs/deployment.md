@@ -70,7 +70,9 @@ needs:
   `logs:DescribeResourcePolicies` and `logs:DescribeLogGroups`.
 - For the [Terraform state](#terraform-state) bucket: `s3:CreateBucket`, `s3:PutBucketVersioning`,
   `s3:PutEncryptionConfiguration`, `s3:PutBucketPublicAccessBlock`, `s3:PutBucketOwnershipControls`,
-  `s3:PutBucketPolicy`, plus `s3:ListBucket`, object read and write on the bucket, and `sts:GetCallerIdentity`.
+  `s3:PutBucketPolicy`, `s3:PutBucketLogging` and `s3:PutLifecycleConfiguration` (for the bucket and its
+  access-log bucket), plus `s3:ListBucket`, object read and write on the bucket, `kms:GenerateDataKey` and
+  `kms:Decrypt` on its KMS key, and `sts:GetCallerIdentity`.
 
 This list is not exhaustive.
 
@@ -83,7 +85,8 @@ the [architecture](../README.md#architecture)).
 ### Customer managed KMS key (optional)
 
 With `kms_key_arn` set, the database, Redis, Secrets Manager secrets, CloudWatch log groups, the config and
-request-log buckets and the alarm topic are encrypted with your key. Terraform does not manage the key policy;
+request-log buckets, the alarm topic and a newly created [Terraform state](#terraform-state) bucket are
+encrypted with your key. Terraform does not manage the key policy;
 it must allow:
 
 - the deploying principal to use the key;
@@ -475,10 +478,26 @@ against the new database.
 ### Terraform state
 
 `deploy/deploy.sh` keeps state in an S3 bucket named `litellm-gateway-tfstate-<account-id>-<region>` (override
-with `TF_STATE_BUCKET`) and creates it on the first run: versioning on, SSE-S3 encryption, public access blocked,
-bucket-owner-enforced ownership, TLS-only bucket policy, and native S3 state locking (no DynamoDB table). Each
-deployment's state lives under `<deployment_name>/`. The scripts refuse a bucket of that name owned by another
-account.
+with `TF_STATE_BUCKET`) and creates it on the first run: versioning on, default SSE-KMS encryption, public access
+blocked, bucket-owner-enforced ownership, TLS-only bucket policy, S3 server access logging, and native S3 state
+locking (no DynamoDB table). Each deployment's state lives under `<deployment_name>/`. The scripts refuse a bucket
+of that name owned by another account.
+
+State holds the ALB's OIDC client secret (the load balancer API takes it as a value), so treat read access to
+the bucket like access to that secret:
+
+- **Encryption key.** A new bucket uses `TF_STATE_KMS_KEY_ARN` if set, else the deployment's `kms_key_arn`, else
+  the AWS managed `aws/s3` key. Only a customer managed key lets you restrict who can decrypt state through its key
+  policy; the `aws/s3` key admits any principal in the account that can read the bucket.
+- **Access logs.** S3 server access logs of a new state bucket go to `<state bucket>-access-logs` (SSE-S3, the only
+  encryption S3 logging supports; private; TLS-only; delivery limited to S3 logging for the state bucket; logs
+  expire after ten years). The config bucket logs to its own access-log bucket in the foundation stack.
+- **Existing buckets are not changed.** For a bucket that already exists, `deploy/deploy.sh` checks the required
+  controls and prints a note when it lacks SSE-KMS or access logging; configure those yourself. State objects
+  always take the bucket's default encryption (the backend is initialised without `encrypt=true`, which would
+  force SSE-S3 on each object).
+
+`deploy/undeploy.sh` keeps the state bucket and its access-log bucket.
 
 ### Connect the trial VPN
 
